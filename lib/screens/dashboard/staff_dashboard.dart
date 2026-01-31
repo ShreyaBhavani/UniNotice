@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/floating_icons_background.dart';
 import '../login/login_screen.dart';
+import '../notices/staff_notice_list_screen.dart';
+import '../attendance/staff_attendance_list_screen.dart';
+import '../grades/staff_grades_screen.dart';
+import '../timetable/staff_schedule_screen.dart';
 
 class StaffDashboard extends StatefulWidget {
   const StaffDashboard({super.key});
@@ -136,10 +140,23 @@ class _StaffDashboardState extends State<StaffDashboard> {
                         children: [
                           Text('Welcome, ${_currentUser?.fullName ?? 'Staff'}!', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-                            child: const Text('Staff Member', style: TextStyle(color: Colors.white, fontSize: 12)),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                                child: const Text('Staff Member', style: TextStyle(color: Colors.white, fontSize: 12)),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                                decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), borderRadius: BorderRadius.circular(12)),
+                                child: Text(
+                                  _currentUser?.department.shortName ?? 'N/A',
+                                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -161,35 +178,60 @@ class _StaffDashboardState extends State<StaffDashboard> {
                 crossAxisSpacing: 12,
                 childAspectRatio: 1.2,
                 children: [
-                  _actionCard('Post Notice', Icons.campaign, const Color(0xFFE53E3E), () => _showFeatureMessage('Post Notice')),
-                  _actionCard('Attendance', Icons.fact_check, const Color(0xFF3182CE), () => _showFeatureMessage('Attendance')),
-                  _actionCard('Grades', Icons.grade, const Color(0xFFD69E2E), () => _showFeatureMessage('Grades')),
-                  _actionCard('Schedule', Icons.schedule, const Color(0xFF805AD5), () => _showFeatureMessage('Schedule')),
+                  _actionCard('Post Notice', Icons.campaign, const Color(0xFFE53E3E), () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => StaffNoticeListScreen(staffId: _currentUser?.id),
+                    ));
+                  }),
+                  _actionCard('Attendance', Icons.fact_check, const Color(0xFF3182CE), () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => StaffAttendanceListScreen(staffId: _currentUser?.id),
+                    ));
+                  }),
+                  _actionCard('Grades', Icons.grade, const Color(0xFFD69E2E), () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const StaffGradesScreen()));
+                  }),
+                  _actionCard('Schedule', Icons.schedule, const Color(0xFF805AD5), () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => StaffScheduleScreen(staffId: _currentUser?.id),
+                    ));
+                  }),
                 ],
               ),
               const SizedBox(height: 24),
 
-              // Statistics Section
-              const Text('Quick Stats', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2D3748))),
-              const SizedBox(height: 12),
-              
-              Row(
-                children: [
-                  Expanded(child: _statsCard('Classes Today', '4', Icons.class_outlined, const Color(0xFF3182CE))),
-                  const SizedBox(width: 12),
-                  Expanded(child: _statsCard('Pending', '12', Icons.pending_actions, const Color(0xFFD69E2E))),
-                ],
+              // Department Info
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Your Department', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3748))),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.business, color: Color(0xFF38A169)),
+                        const SizedBox(width: 8),
+                        Text(
+                          _currentUser?.department.displayName ?? 'Not Assigned',
+                          style: const TextStyle(color: Color(0xFF4A5568), fontSize: 14),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'You can post notices and manage data for students in any department: IT, CS, CE, AIML.',
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 24),
-
-              // Today's Schedule
-              const Text("Today's Schedule", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2D3748))),
-              const SizedBox(height: 12),
-              
-              _scheduleCard('09:00 AM', 'Data Structures', 'Room 101', const Color(0xFF3182CE)),
-              _scheduleCard('11:00 AM', 'Algorithm Design', 'Room 205', const Color(0xFF38A169)),
-              _scheduleCard('02:00 PM', 'Database Systems', 'Lab 3', const Color(0xFF805AD5)),
-              _scheduleCard('04:00 PM', 'Staff Meeting', 'Conference Room', const Color(0xFFE53E3E)),
             ],
           ),
         ),
@@ -219,73 +261,6 @@ class _StaffDashboardState extends State<StaffDashboard> {
             Text(title, style: const TextStyle(color: Color(0xFF2D3748), fontWeight: FontWeight.w600, fontSize: 14)),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _statsCard(String title, String count, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: color.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(count, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
-              Text(title, style: const TextStyle(color: Color(0xFF4A5568), fontSize: 12)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _scheduleCard(String time, String subject, String room, Color color) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border(left: BorderSide(color: color, width: 4)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-            child: Text(time, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(subject, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2D3748), fontSize: 16)),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.location_on, size: 14, color: Colors.grey.shade500),
-                    const SizedBox(width: 4),
-                    Text(room, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

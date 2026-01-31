@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "524881463867",
+    "firebase_url": "https://uninotice-2e07c-default-rtdb.asia-southeast1.firebasedatabase.app",
     "project_id": "uninotice-2e07c",
     "storage_bucket": "uninotice-2e07c.firebasestorage.app"
   },
@@ -13,6 +14,14 @@
         }
       },
       "oauth_client": [
+        {
+          "client_id": "524881463867-plu6di8eosqcdmqnhpvevj02teinb50t.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.my_app",
+            "certificate_hash": "779c06befb5007fe84255061eb314c5988ae5fe8"
+          }
+        },
         {
           "client_id": "524881463867-hup5jtubm5a90fcam4viqktq7ua34tta.apps.googleusercontent.com",
           "client_type": 3
@@ -29,6 +38,13 @@
             {
               "client_id": "524881463867-hup5jtubm5a90fcam4viqktq7ua34tta.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "524881463867-34grkde7sqbqk9lbobccg42epkrbm9s2.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.myApp"
+              }
             }
           ]
         }

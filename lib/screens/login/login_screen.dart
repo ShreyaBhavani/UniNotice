@@ -125,6 +125,39 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
+  Future<void> _signInWithGoogle() async {
+    setState(() => _isLoading = true);
+
+    try {
+      final result = await _authService.signInWithGoogle().timeout(
+        const Duration(seconds: 60),
+        onTimeout: () => AuthResult(success: false, errorMessage: 'Sign-in timeout. Check your internet.'),
+      );
+
+      if (result.success && mounted) {
+        // Use the role from the result directly - it's already set
+        if (result.role != null) {
+          _navigateToRoleDashboard(result.role!);
+        } else {
+          // Fallback: try to get current user
+          final user = await _authService.getCurrentUser();
+          if (user != null && mounted) {
+            _navigateToRoleDashboard(user.role);
+          } else if (mounted) {
+            // Default to student if no role found
+            _navigateToRoleDashboard(UserRole.student);
+          }
+        }
+      } else if (mounted) {
+        _showError(result.errorMessage ?? 'Google sign-in failed');
+      }
+    } catch (e) {
+      if (mounted) _showError('An error occurred during Google sign-in: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   InputDecoration _buildInputDecoration(String label, IconData icon,
       {Widget? suffixIcon}) {
     return InputDecoration(
@@ -248,6 +281,41 @@ class _LoginScreenState extends State<LoginScreen>
                                             child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
                                           )
                                         : const Text('LOGIN', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    Expanded(child: Divider(color: Colors.grey.shade300)),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      child: Text('OR', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                                    ),
+                                    Expanded(child: Divider(color: Colors.grey.shade300)),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 56,
+                                  child: OutlinedButton.icon(
+                                    onPressed: _isLoading ? null : _signInWithGoogle,
+                                    icon: Image.network(
+                                      'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg',
+                                      height: 24,
+                                      width: 24,
+                                      errorBuilder: (context, error, stackTrace) => 
+                                        const Icon(Icons.g_mobiledata, size: 24, color: Colors.red),
+                                    ),
+                                    label: const Text(
+                                      'Continue with Google',
+                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFF2D3748),
+                                      side: BorderSide(color: Colors.grey.shade300),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
                                   ),
                                 ),
                               ],

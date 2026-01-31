@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/floating_icons_background.dart';
 import '../login/login_screen.dart';
+import '../notices/staff_notice_list_screen.dart';
+import '../attendance/staff_attendance_list_screen.dart';
+import '../grades/staff_grades_screen.dart';
+import '../timetable/staff_schedule_screen.dart';
+import '../courses/student_courses_screen.dart';
+import '../results/student_results_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -44,15 +50,23 @@ class _AdminDashboardState extends State<AdminDashboard> {
           side: const BorderSide(color: Color(0xFF0088CC)),
         ),
         title: const Text('Logout', style: TextStyle(color: Color(0xFF2D3748))),
-        content: const Text('Are you sure you want to logout?', style: TextStyle(color: Color(0xFF4A5568))),
+        content: const Text(
+          'Are you sure you want to logout?',
+          style: TextStyle(color: Color(0xFF4A5568)),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel', style: TextStyle(color: Colors.grey.shade600)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0088CC)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0088CC),
+            ),
             child: const Text('Logout', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -62,7 +76,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
     if (confirm == true) {
       await _authService.logout();
       if (mounted) {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
       }
     }
   }
@@ -71,7 +88,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
     final emailController = TextEditingController();
-    final passwordController = TextEditingController();
     UserRole selectedRole = UserRole.student;
 
     showDialog(
@@ -79,7 +95,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: const Row(
             children: [
               Icon(Icons.person_add, color: Color(0xFF0088CC)),
@@ -96,22 +114,28 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   TextFormField(
                     controller: nameController,
                     decoration: _inputDecoration('Full Name', Icons.person),
-                    validator: (v) => v == null || v.trim().length < 2 ? 'Enter valid name' : null,
+                    validator: (v) => v == null || v.trim().length < 2
+                        ? 'Enter valid name'
+                        : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: emailController,
                     decoration: _inputDecoration('Email', Icons.email),
-                    validator: (v) => v == null || !v.contains('@') ? 'Enter valid email' : null,
+                    validator: (v) => v == null || !v.contains('@')
+                        ? 'Enter valid email'
+                        : null,
                   ),
                   const SizedBox(height: 12),
-                  TextFormField(
-                    controller: passwordController,
-                    decoration: _inputDecoration('Password', Icons.lock),
-                    obscureText: true,
-                    validator: (v) => v == null || v.length < 6 ? 'Min 6 characters' : null,
+                  Text(
+                    'Note: Users will set their password on first login',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     decoration: BoxDecoration(
@@ -123,12 +147,22 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         value: selectedRole,
                         isExpanded: true,
                         items: [
-                          DropdownMenuItem(value: UserRole.student, child: _roleItem(UserRole.student)),
-                          DropdownMenuItem(value: UserRole.staff, child: _roleItem(UserRole.staff)),
-                          DropdownMenuItem(value: UserRole.admin, child: _roleItem(UserRole.admin)),
+                          DropdownMenuItem(
+                            value: UserRole.student,
+                            child: _roleItem(UserRole.student),
+                          ),
+                          DropdownMenuItem(
+                            value: UserRole.staff,
+                            child: _roleItem(UserRole.staff),
+                          ),
+                          DropdownMenuItem(
+                            value: UserRole.admin,
+                            child: _roleItem(UserRole.admin),
+                          ),
                         ],
                         onChanged: (role) {
-                          if (role != null) setDialogState(() => selectedRole = role);
+                          if (role != null)
+                            setDialogState(() => selectedRole = role);
                         },
                       ),
                     ),
@@ -140,15 +174,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Cancel', style: TextStyle(color: Colors.grey.shade600)),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
             ),
             ElevatedButton(
               onPressed: () async {
                 if (formKey.currentState!.validate()) {
-                  final result = await _authService.registerUser(
+                  // Use createUserInFirestore instead of registerUser
+                  // This doesn't affect the admin's current session
+                  final result = await _authService.createUserInFirestore(
                     fullName: nameController.text.trim(),
                     email: emailController.text.trim(),
-                    password: passwordController.text,
                     role: selectedRole,
                   );
                   if (mounted) {
@@ -157,13 +195,21 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       _loadData();
                       _showSnackBar('User created successfully!', Colors.green);
                     } else {
-                      _showSnackBar(result.errorMessage ?? 'Failed', Colors.red);
+                      _showSnackBar(
+                        result.errorMessage ?? 'Failed',
+                        Colors.red,
+                      );
                     }
                   }
                 }
               },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0088CC)),
-              child: const Text('Add User', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0088CC),
+              ),
+              child: const Text(
+                'Add User',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -181,15 +227,33 @@ class _AdminDashboardState extends State<AdminDashboard> {
           children: [
             CircleAvatar(
               backgroundColor: _getRoleColor(user.role),
-              child: Text(user.fullName[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: Text(
+                user.fullName[0].toUpperCase(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(user.fullName, style: const TextStyle(color: Color(0xFF2D3748), fontSize: 18)),
-                  Text(_getRoleLabel(user.role), style: TextStyle(color: _getRoleColor(user.role), fontSize: 12)),
+                  Text(
+                    user.fullName,
+                    style: const TextStyle(
+                      color: Color(0xFF2D3748),
+                      fontSize: 18,
+                    ),
+                  ),
+                  Text(
+                    _getRoleLabel(user.role),
+                    style: TextStyle(
+                      color: _getRoleColor(user.role),
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -201,7 +265,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
           children: [
             _detailRow(Icons.email, 'Email', user.email),
             const SizedBox(height: 8),
-            _detailRow(Icons.calendar_today, 'Created', '${user.createdAt.day}/${user.createdAt.month}/${user.createdAt.year}'),
+            _detailRow(
+              Icons.business,
+              'Department',
+              user.department.displayName,
+            ),
+            const SizedBox(height: 8),
+            _detailRow(
+              Icons.calendar_today,
+              'Created',
+              '${user.createdAt.day}/${user.createdAt.month}/${user.createdAt.year}',
+            ),
             const SizedBox(height: 8),
             _detailRow(Icons.badge, 'Role', _getRoleLabel(user.role)),
           ],
@@ -217,11 +291,19 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     title: const Text('Delete User?'),
                     content: Text('Delete ${user.fullName}?'),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancel'),
+                      ),
                       ElevatedButton(
                         onPressed: () => Navigator.pop(ctx, true),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                        child: const Text('Delete', style: TextStyle(color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                        ),
+                        child: const Text(
+                          'Delete',
+                          style: TextStyle(color: Colors.white),
+                        ),
                       ),
                     ],
                   ),
@@ -236,7 +318,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0088CC)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0088CC),
+            ),
             child: const Text('Close', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -249,8 +333,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
       children: [
         Icon(icon, size: 18, color: const Color(0xFF0088CC)),
         const SizedBox(width: 8),
-        Text('$label: ', style: const TextStyle(color: Color(0xFF4A5568), fontWeight: FontWeight.w500)),
-        Expanded(child: Text(value, style: const TextStyle(color: Color(0xFF2D3748)))),
+        Text(
+          '$label: ',
+          style: const TextStyle(
+            color: Color(0xFF4A5568),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Expanded(
+          child: Text(value, style: const TextStyle(color: Color(0xFF2D3748))),
+        ),
       ],
     );
   }
@@ -260,7 +352,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
       children: [
         Icon(_getRoleIcon(role), color: _getRoleColor(role), size: 20),
         const SizedBox(width: 8),
-        Text(_getRoleLabel(role), style: const TextStyle(color: Color(0xFF2D3748))),
+        Text(
+          _getRoleLabel(role),
+          style: const TextStyle(color: Color(0xFF2D3748)),
+        ),
       ],
     );
   }
@@ -279,31 +374,44 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   void _showSnackBar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: color, behavior: SnackBarBehavior.floating),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
   Color _getRoleColor(UserRole role) {
     switch (role) {
-      case UserRole.admin: return const Color(0xFFE53E3E);
-      case UserRole.staff: return const Color(0xFF38A169);
-      case UserRole.student: return const Color(0xFF3182CE);
+      case UserRole.admin:
+        return const Color(0xFFE53E3E);
+      case UserRole.staff:
+        return const Color(0xFF38A169);
+      case UserRole.student:
+        return const Color(0xFF3182CE);
     }
   }
 
   IconData _getRoleIcon(UserRole role) {
     switch (role) {
-      case UserRole.admin: return Icons.admin_panel_settings;
-      case UserRole.staff: return Icons.work;
-      case UserRole.student: return Icons.school;
+      case UserRole.admin:
+        return Icons.admin_panel_settings;
+      case UserRole.staff:
+        return Icons.work;
+      case UserRole.student:
+        return Icons.school;
     }
   }
 
   String _getRoleLabel(UserRole role) {
     switch (role) {
-      case UserRole.admin: return 'Administrator';
-      case UserRole.staff: return 'Staff';
-      case UserRole.student: return 'Student';
+      case UserRole.admin:
+        return 'Administrator';
+      case UserRole.staff:
+        return 'Staff';
+      case UserRole.student:
+        return 'Student';
     }
   }
 
@@ -312,11 +420,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: Color(0xFFE8EDF5),
-        body: Center(child: CircularProgressIndicator(color: Color(0xFF0088CC))),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF0088CC)),
+        ),
       );
     }
 
-    final students = _allUsers.where((u) => u.role == UserRole.student).toList();
+    final students = _allUsers
+        .where((u) => u.role == UserRole.student)
+        .toList();
     final staff = _allUsers.where((u) => u.role == UserRole.staff).toList();
     final admins = _allUsers.where((u) => u.role == UserRole.admin).toList();
 
@@ -325,7 +437,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 2,
-        title: const Text('Admin Dashboard', style: TextStyle(color: Color(0xFF2D3748), fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Admin Dashboard',
+          style: TextStyle(
+            color: Color(0xFF2D3748),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, color: Color(0xFF0088CC)),
@@ -358,28 +476,54 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [const Color(0xFF0088CC), const Color(0xFF0088CC).withOpacity(0.8)],
+                      colors: [
+                        const Color(0xFF0088CC),
+                        const Color(0xFF0088CC).withOpacity(0.8),
+                      ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: [BoxShadow(color: const Color(0xFF0088CC).withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0088CC).withOpacity(0.3),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: Row(
                     children: [
                       CircleAvatar(
                         radius: 30,
                         backgroundColor: Colors.white,
-                        child: Icon(Icons.admin_panel_settings, size: 35, color: const Color(0xFF0088CC)),
+                        child: Icon(
+                          Icons.admin_panel_settings,
+                          size: 35,
+                          color: const Color(0xFF0088CC),
+                        ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Welcome, ${_currentUser?.fullName ?? 'Admin'}!', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                            Text(
+                              'Welcome, ${_currentUser?.fullName ?? 'Admin'}!',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                             const SizedBox(height: 4),
-                            const Text('Administrator Panel', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                            const Text(
+                              'Administrator Panel',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -391,29 +535,168 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 // Stats Cards
                 Row(
                   children: [
-                    Expanded(child: _statsCard('Students', students.length, Icons.school, const Color(0xFF3182CE))),
+                    Expanded(
+                      child: _statsCard(
+                        'Students',
+                        students.length,
+                        Icons.school,
+                        const Color(0xFF3182CE),
+                      ),
+                    ),
                     const SizedBox(width: 12),
-                    Expanded(child: _statsCard('Staff', staff.length, Icons.work, const Color(0xFF38A169))),
+                    Expanded(
+                      child: _statsCard(
+                        'Staff',
+                        staff.length,
+                        Icons.work,
+                        const Color(0xFF38A169),
+                      ),
+                    ),
                     const SizedBox(width: 12),
-                    Expanded(child: _statsCard('Admins', admins.length, Icons.admin_panel_settings, const Color(0xFFE53E3E))),
+                    Expanded(
+                      child: _statsCard(
+                        'Admins',
+                        admins.length,
+                        Icons.admin_panel_settings,
+                        const Color(0xFFE53E3E),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Admin Quick Actions
+                const Text(
+                  'Quick Actions',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2D3748),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 1.0,
+                  children: [
+                    _actionCard(
+                      'Notices',
+                      Icons.campaign,
+                      const Color(0xFFE53E3E),
+                      () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const StaffNoticeListScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _actionCard(
+                      'Attendance',
+                      Icons.fact_check,
+                      const Color(0xFF3182CE),
+                      () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const StaffAttendanceListScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _actionCard(
+                      'Grades',
+                      Icons.grade,
+                      const Color(0xFFD69E2E),
+                      () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const StaffGradesScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _actionCard(
+                      'Schedule',
+                      Icons.schedule,
+                      const Color(0xFF805AD5),
+                      () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const StaffScheduleScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _actionCard(
+                      'Courses',
+                      Icons.menu_book,
+                      const Color(0xFF38A169),
+                      () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const StudentCoursesScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    _actionCard(
+                      'Results',
+                      Icons.assessment,
+                      const Color(0xFFDD6B20),
+                      () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const StudentResultsScreen(),
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
                 const SizedBox(height: 24),
 
                 // Users List
-                const Text('All Users', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2D3748))),
+                const Text(
+                  'All Users',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2D3748),
+                  ),
+                ),
                 const SizedBox(height: 12),
 
                 if (_allUsers.isEmpty)
                   Container(
                     padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: const Center(
                       child: Column(
                         children: [
-                          Icon(Icons.people_outline, size: 48, color: Colors.grey),
+                          Icon(
+                            Icons.people_outline,
+                            size: 48,
+                            color: Colors.grey,
+                          ),
                           SizedBox(height: 8),
-                          Text('No users yet', style: TextStyle(color: Colors.grey)),
+                          Text(
+                            'No users yet',
+                            style: TextStyle(color: Colors.grey),
+                          ),
                         ],
                       ),
                     ),
@@ -434,14 +717,30 @@ class _AdminDashboardState extends State<AdminDashboard> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: color.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 2))],
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         children: [
           Icon(icon, color: color, size: 28),
           const SizedBox(height: 8),
-          Text('$count', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
-          Text(title, style: const TextStyle(color: Color(0xFF4A5568), fontSize: 12)),
+          Text(
+            '$count',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            title,
+            style: const TextStyle(color: Color(0xFF4A5568), fontSize: 12),
+          ),
         ],
       ),
     );
@@ -453,7 +752,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: ListTile(
         onTap: () => _showUserDetails(user),
@@ -461,15 +766,124 @@ class _AdminDashboardState extends State<AdminDashboard> {
           backgroundColor: _getRoleColor(user.role).withOpacity(0.1),
           child: Icon(_getRoleIcon(user.role), color: _getRoleColor(user.role)),
         ),
-        title: Text(user.fullName, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF2D3748))),
-        subtitle: Text(user.email, style: const TextStyle(color: Color(0xFF4A5568), fontSize: 12)),
+        title: Text(
+          user.fullName,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF2D3748),
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              user.email,
+              style: const TextStyle(color: Color(0xFF4A5568), fontSize: 12),
+            ),
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _getDepartmentColor(
+                      user.department,
+                    ).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    user.department.shortName,
+                    style: TextStyle(
+                      color: _getDepartmentColor(user.department),
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        isThreeLine: true,
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
             color: _getRoleColor(user.role).withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Text(_getRoleLabel(user.role), style: TextStyle(color: _getRoleColor(user.role), fontSize: 12, fontWeight: FontWeight.w500)),
+          child: Text(
+            _getRoleLabel(user.role),
+            style: TextStyle(
+              color: _getRoleColor(user.role),
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _getDepartmentColor(Department dept) {
+    switch (dept) {
+      case Department.it:
+        return const Color(0xFF3182CE);
+      case Department.cs:
+        return const Color(0xFF38A169);
+      case Department.ce:
+        return const Color(0xFFD69E2E);
+      case Department.aiml:
+        return const Color(0xFF805AD5);
+      case Department.unknown:
+        return Colors.grey;
+    }
+  }
+
+  Widget _actionCard(
+    String title,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.2),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: const TextStyle(
+                color: Color(0xFF2D3748),
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+          ],
         ),
       ),
     );

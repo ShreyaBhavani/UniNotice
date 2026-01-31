@@ -4,6 +4,7 @@ import 'firebase_options.dart';
 import 'config/theme.dart';
 import 'config/constants.dart';
 import 'screens/splash/splash_screen.dart';
+import 'services/database_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,8 +13,12 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    
+    // Initialize sample data (creates staff/students if collections are empty)
+    await DatabaseService().initializeSampleData();
   } catch (e) {
     // Already initialized, ignore
+    print('Error during initialization: $e');
   }
   
   runApp(const MyApp());

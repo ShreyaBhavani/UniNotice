@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:my_app/screens/login/login_screen.dart';
 import 'package:my_app/screens/dashboard/admin_dashboard.dart';
 import 'package:my_app/screens/dashboard/student_dashboard.dart';
@@ -48,21 +49,33 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (!mounted) return;
 
-    // Skip admin init - go straight to login check
     Widget destination = const LoginScreen();
     
     try {
-      final isLoggedIn = await _authService.isLoggedIn().timeout(
-        const Duration(seconds: 3),
-        onTimeout: () => false,
-      );
+      // Wait for Firebase Auth to restore the session
+      // Firebase Auth state might not be immediately available on app restart
+      User? firebaseUser = FirebaseAuth.instance.currentUser;
+      
+      // If no user yet, wait a bit for Firebase to restore auth state
+      if (firebaseUser == null) {
+        // Listen for auth state change with timeout
+        firebaseUser = await FirebaseAuth.instance
+            .authStateChanges()
+            .first
+            .timeout(
+              const Duration(seconds: 3),
+              onTimeout: () => null,
+            );
+      }
 
-      if (isLoggedIn && mounted) {
+      if (firebaseUser != null && mounted) {
+        print('User already logged in: ${firebaseUser.email}');
         final user = await _authService.getCurrentUser().timeout(
-          const Duration(seconds: 3),
+          const Duration(seconds: 5),
           onTimeout: () => null,
         );
         if (user != null) {
+          print('Navigating to ${user.role} dashboard');
           switch (user.role) {
             case UserRole.admin:
               destination = const AdminDashboard();
@@ -75,6 +88,8 @@ class _SplashScreenState extends State<SplashScreen>
               break;
           }
         }
+      } else {
+        print('No user logged in, showing login screen');
       }
     } catch (e) {
       print('Auth check error: $e');

@@ -1,10 +1,86 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 /// User roles enum
 enum UserRole { admin, student, staff }
+
+/// Department enum
+enum Department {
+  it,
+  cs,
+  ce,
+  aiml,
+  unknown;
+
+  String get displayName {
+    switch (this) {
+      case Department.it:
+        return 'Information Technology';
+      case Department.cs:
+        return 'Computer Science';
+      case Department.ce:
+        return 'Computer Engineering';
+      case Department.aiml:
+        return 'AI & Machine Learning';
+      case Department.unknown:
+        return 'Unknown';
+    }
+  }
+
+  String get shortName {
+    switch (this) {
+      case Department.it:
+        return 'IT';
+      case Department.cs:
+        return 'CS';
+      case Department.ce:
+        return 'CE';
+      case Department.aiml:
+        return 'AIML';
+      case Department.unknown:
+        return 'N/A';
+    }
+  }
+}
+
+/// Extract department from email
+/// Handles patterns like: 20it006@uni.com, priynkait@uni.com, student_it@uni.com
+Department getDepartmentFromEmail(String email) {
+  final emailLower = email.toLowerCase();
+  final localPart = emailLower.split('@').first; // Get part before @
+
+  // Check for IT department patterns
+  if (localPart.contains('it') ||
+      emailLower.contains('_it') ||
+      emailLower.contains('.it') ||
+      emailLower.contains('it@') ||
+      emailLower.contains('it_')) {
+    return Department.it;
+  }
+  // Check for CS department patterns
+  else if (localPart.contains('cs') ||
+      emailLower.contains('_cs') ||
+      emailLower.contains('.cs') ||
+      emailLower.contains('cs@') ||
+      emailLower.contains('cs_')) {
+    return Department.cs;
+  }
+  // Check for CE department patterns (check before 'ce' in 'notice' etc)
+  else if (RegExp(r'\d+ce|ce\d+|_ce|ce_|\.ce|ce@').hasMatch(emailLower)) {
+    return Department.ce;
+  }
+  // Check for AIML department patterns
+  else if (localPart.contains('aiml') ||
+      emailLower.contains('_aiml') ||
+      emailLower.contains('.aiml') ||
+      emailLower.contains('aiml@') ||
+      emailLower.contains('aiml_')) {
+    return Department.aiml;
+  }
+  return Department.unknown;
+}
 
 /// Authentication Result class to handle success/error states
 class AuthResult {
@@ -13,7 +89,12 @@ class AuthResult {
   final String? userId;
   final UserRole? role;
 
-  AuthResult({required this.success, this.errorMessage, this.userId, this.role});
+  AuthResult({
+    required this.success,
+    this.errorMessage,
+    this.userId,
+    this.role,
+  });
 }
 
 /// User model for storing user data
@@ -22,6 +103,7 @@ class UserModel {
   final String fullName;
   final String email;
   final UserRole role;
+  final Department department;
   final DateTime createdAt;
 
   UserModel({
@@ -30,53 +112,75 @@ class UserModel {
     required this.email,
     required this.role,
     required this.createdAt,
-  });
+    Department? department,
+  }) : department = department ?? getDepartmentFromEmail(email);
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'fullName': fullName,
     'email': email,
     'role': role.name,
-    'createdAt': createdAt.toIso8601String(),
+    'department': department.name,
+    'createdAt': FieldValue.serverTimestamp(),
   };
 
-  factory UserModel.fromJson(Map<String, dynamic> json) => UserModel(
-    id: json['id'] ?? '',
-    fullName: json['fullName'] ?? '',
-    email: json['email'] ?? '',
-    role: UserRole.values.firstWhere(
-      (r) => r.name == json['role'],
-      orElse: () => UserRole.student,
-    ),
-    createdAt: json['createdAt'] != null 
-        ? DateTime.parse(json['createdAt']) 
-        : DateTime.now(),
-  );
+  /// Convert to JSON for updates (without serverTimestamp)
+  Map<String, dynamic> toJsonForUpdate() => {
+    'id': id,
+    'fullName': fullName,
+    'email': email,
+    'role': role.name,
+    'department': department.name,
+  };
+
+  factory UserModel.fromJson(Map<String, dynamic> json) {
+    final email = json['email'] ?? '';
+
+    // Handle Firestore Timestamp
+    DateTime createdAt;
+    if (json['createdAt'] is Timestamp) {
+      createdAt = (json['createdAt'] as Timestamp).toDate();
+    } else if (json['createdAt'] is String) {
+      createdAt = DateTime.parse(json['createdAt']);
+    } else {
+      createdAt = DateTime.now();
+    }
+
+    return UserModel(
+      id: json['id'] ?? '',
+      fullName: json['fullName'] ?? '',
+      email: email,
+      role: UserRole.values.firstWhere(
+        (r) => r.name == json['role'],
+        orElse: () => UserRole.student,
+      ),
+      department: json['department'] != null
+          ? Department.values.firstWhere(
+              (d) => d.name == json['department'],
+              orElse: () => getDepartmentFromEmail(email),
+            )
+          : getDepartmentFromEmail(email),
+      createdAt: createdAt,
+    );
+  }
 
   bool get isAdmin => role == UserRole.admin;
   bool get isStudent => role == UserRole.student;
   bool get isStaff => role == UserRole.staff;
 }
 
-/// Authentication Service with Firebase Auth + Realtime Database
+/// Authentication Service with Firebase Auth + Cloud Firestore
 class AuthService {
   static const String _keyCurrentUser = 'currentUser';
-  static const String _databaseUrl = 'https://uninotice-2e07c-default-rtdb.asia-southeast1.firebasedatabase.app';
 
   // Firebase instances
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  late final DatabaseReference _database;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Singleton pattern
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
-  AuthService._internal() {
-    // Initialize database with explicit URL for regional database
-    _database = FirebaseDatabase.instanceFor(
-      app: Firebase.app(),
-      databaseURL: _databaseUrl,
-    ).ref();
-  }
+  AuthService._internal();
 
   // ==================== VALIDATION METHODS ====================
 
@@ -131,17 +235,20 @@ class AuthService {
   Future<void> initializeDefaultAdmin() async {
     try {
       // Check if admin exists in database
-      final snapshot = await _database.child('users').orderByChild('email').equalTo('admin@uni.com').get();
-      
-      if (!snapshot.exists) {
+      final snapshot = await _firestore
+          .collection('users')
+          .where('email', isEqualTo: 'admin@uni.com')
+          .get();
+
+      if (snapshot.docs.isEmpty) {
         // Create admin in Firebase Auth
         try {
           final userCredential = await _auth.createUserWithEmailAndPassword(
             email: 'admin@uni.com',
             password: 'admin123',
           );
-          
-          // Save admin to Realtime Database
+
+          // Save admin to Firestore
           final adminUser = UserModel(
             id: userCredential.user!.uid,
             fullName: 'Admin',
@@ -149,9 +256,12 @@ class AuthService {
             role: UserRole.admin,
             createdAt: DateTime.now(),
           );
-          
-          await _database.child('users').child(userCredential.user!.uid).set(adminUser.toJson());
-          
+
+          await _firestore
+              .collection('users')
+              .doc(userCredential.user!.uid)
+              .set(adminUser.toJson());
+
           // Sign out after creating admin
           await _auth.signOut();
         } on FirebaseAuthException catch (e) {
@@ -168,11 +278,14 @@ class AuthService {
   }
 
   /// Register a new user (Admin only)
+  /// Note: This requires the admin's credentials to re-authenticate after creating user
   Future<AuthResult> registerUser({
     required String fullName,
     required String email,
     required String password,
     required UserRole role,
+    String? adminEmail,
+    String? adminPassword,
   }) async {
     // Validate inputs
     final nameError = validateFullName(fullName);
@@ -191,42 +304,62 @@ class AuthService {
     }
 
     try {
-      // Store current user to restore session after creating new user
-      final currentUser = _auth.currentUser;
       print('Registering new user: $email');
-      print('Current admin user: ${currentUser?.email}');
-      
-      // Create user in Firebase Auth
+
+      // Save current admin user before creating new user
+      // ignore: unused_local_variable
+      final currentAdmin = _auth.currentUser;
+
+      // Create user in Firebase Auth (this will sign in as the new user)
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email.toLowerCase(),
         password: password,
       );
-      
+
       print('User created in Firebase Auth: ${userCredential.user?.uid}');
 
-      // Create user model
-      final newUser = UserModel(
-        id: userCredential.user!.uid,
-        fullName: fullName,
-        email: email.toLowerCase(),
-        role: role,
-        createdAt: DateTime.now(),
-      );
+      // Create user model with department auto-detected from email
+      final department = getDepartmentFromEmail(email);
 
-      // Save to Realtime Database
-      await _database.child('users').child(userCredential.user!.uid).set(newUser.toJson());
+      // Save to Firestore IMMEDIATELY after auth creation
+      await _firestore.collection('users').doc(userCredential.user!.uid).set({
+        'id': userCredential.user!.uid,
+        'fullName': fullName,
+        'email': email.toLowerCase(),
+        'role': role.name,
+        'department': department.name,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      print('User saved to Firestore: ${userCredential.user!.uid}');
+
+      final newUserId = userCredential.user!.uid;
 
       // Sign out the newly created user
       await _auth.signOut();
-      
-      // Re-authenticate the admin if they were logged in
-      if (currentUser != null) {
-        // Admin needs to re-login - we'll handle this in the UI
+
+      // Re-authenticate admin if credentials provided
+      if (adminEmail != null && adminPassword != null) {
+        try {
+          await _auth.signInWithEmailAndPassword(
+            email: adminEmail,
+            password: adminPassword,
+          );
+          print('Admin re-authenticated: $adminEmail');
+        } catch (e) {
+          print('Could not re-authenticate admin: $e');
+        }
       }
 
-      return AuthResult(success: true, userId: newUser.id, role: role);
+      return AuthResult(
+        success: true,
+        userId: newUserId,
+        role: role,
+      );
     } on FirebaseAuthException catch (e) {
-      print('FirebaseAuthException during registration: ${e.code} - ${e.message}');
+      print(
+        'FirebaseAuthException during registration: ${e.code} - ${e.message}',
+      );
       String message = 'Registration failed';
       if (e.code == 'email-already-in-use') {
         message = 'An account with this email already exists';
@@ -245,17 +378,65 @@ class AuthService {
     }
   }
 
+  /// Create user directly in Firestore without Firebase Auth
+  /// Used when admin wants to pre-register users
+  Future<AuthResult> createUserInFirestore({
+    required String fullName,
+    required String email,
+    required UserRole role,
+  }) async {
+    try {
+      // Check if user already exists
+      final existing = await _firestore
+          .collection('users')
+          .where('email', isEqualTo: email.toLowerCase())
+          .get();
+
+      if (existing.docs.isNotEmpty) {
+        return AuthResult(
+          success: false,
+          errorMessage: 'User with this email already exists',
+        );
+      }
+
+      // Generate a unique ID
+      final docRef = _firestore.collection('users').doc();
+      final department = getDepartmentFromEmail(email);
+
+      await docRef.set({
+        'id': docRef.id,
+        'fullName': fullName,
+        'email': email.toLowerCase(),
+        'role': role.name,
+        'department': department.name,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      print('User created in Firestore: ${docRef.id}');
+
+      return AuthResult(
+        success: true,
+        userId: docRef.id,
+        role: role,
+      );
+    } catch (e) {
+      print('Error creating user in Firestore: $e');
+      return AuthResult(
+        success: false,
+        errorMessage: 'Failed to create user: ${e.toString()}',
+      );
+    }
+  }
+
   /// Get all registered users (for admin)
   Future<List<UserModel>> getAllUsers() async {
     try {
-      final snapshot = await _database.child('users').get();
-      
-      if (!snapshot.exists) return [];
-      
-      final usersMap = Map<String, dynamic>.from(snapshot.value as Map);
-      return usersMap.entries.map((entry) {
-        final userData = Map<String, dynamic>.from(entry.value as Map);
-        return UserModel.fromJson(userData);
+      final snapshot = await _firestore.collection('users').get();
+
+      if (snapshot.docs.isEmpty) return [];
+
+      return snapshot.docs.map((doc) {
+        return UserModel.fromJson(doc.data());
       }).toList();
     } catch (e) {
       print('Error getting users: $e');
@@ -267,29 +448,37 @@ class AuthService {
   Future<AuthResult> deleteUser(String email) async {
     try {
       // Find user by email
-      final snapshot = await _database.child('users').orderByChild('email').equalTo(email.toLowerCase()).get();
-      
-      if (!snapshot.exists) {
+      final snapshot = await _firestore
+          .collection('users')
+          .where('email', isEqualTo: email.toLowerCase())
+          .get();
+
+      if (snapshot.docs.isEmpty) {
         return AuthResult(success: false, errorMessage: 'User not found');
       }
 
       // Prevent deleting default admin
       if (email.toLowerCase() == 'admin@uni.com') {
-        return AuthResult(success: false, errorMessage: 'Cannot delete default admin');
+        return AuthResult(
+          success: false,
+          errorMessage: 'Cannot delete default admin',
+        );
       }
 
       // Get user ID and delete from database
-      final usersMap = Map<String, dynamic>.from(snapshot.value as Map);
-      final userId = usersMap.keys.first;
-      
-      await _database.child('users').child(userId).remove();
-      
+      final userId = snapshot.docs.first.id;
+
+      await _firestore.collection('users').doc(userId).delete();
+
       // Note: We can't delete from Firebase Auth without admin SDK
       // The user will still exist in Auth but not in database
-      
+
       return AuthResult(success: true);
     } catch (e) {
-      return AuthResult(success: false, errorMessage: 'Failed to delete user: ${e.toString()}');
+      return AuthResult(
+        success: false,
+        errorMessage: 'Failed to delete user: ${e.toString()}',
+      );
     }
   }
 
@@ -311,34 +500,60 @@ class AuthService {
 
     try {
       print('Attempting login for: $email');
-      
+
       // Sign in with Firebase Auth
       final userCredential = await _auth.signInWithEmailAndPassword(
         email: email.toLowerCase(),
         password: password,
       );
-      
+
       print('Firebase Auth success: ${userCredential.user?.uid}');
 
-      // Get user data from Realtime Database
-      final snapshot = await _database.child('users').child(userCredential.user!.uid).get();
-      
+      // Get user data from Firestore
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .get();
+
       print('Database snapshot exists: ${snapshot.exists}');
-      
+
       UserModel user;
+
+      // If user doesn't exist in Firestore, create document from Auth data
       if (!snapshot.exists) {
-        // Auto-create user data for admin on first login
-        final isAdmin = email.toLowerCase() == 'admin@uni.com';
-        user = UserModel(
-          id: userCredential.user!.uid,
-          fullName: isAdmin ? 'Admin' : 'User',
-          email: email.toLowerCase(),
-          role: isAdmin ? UserRole.admin : UserRole.student,
-          createdAt: DateTime.now(),
-        );
-        await _database.child('users').child(userCredential.user!.uid).set(user.toJson());
+        // Determine role from email pattern
+        UserRole role = UserRole.student; // default
+        final emailLower = email.toLowerCase();
+        if (emailLower.contains('admin')) {
+          role = UserRole.admin;
+        } else if (emailLower.contains('staff') ||
+            emailLower.contains('prof') ||
+            emailLower.contains('teacher')) {
+          role = UserRole.staff;
+        }
+
+        // Create user document in Firestore
+        final department = getDepartmentFromEmail(email);
+        await _firestore.collection('users').doc(userCredential.user!.uid).set({
+          'id': userCredential.user!.uid,
+          'fullName':
+              userCredential.user!.displayName ?? email.split('@').first,
+          'email': email.toLowerCase(),
+          'role': role.name,
+          'department': department.name,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+
+        // Read back the created document
+        final newSnapshot = await _firestore
+            .collection('users')
+            .doc(userCredential.user!.uid)
+            .get();
+        user = UserModel.fromJson(newSnapshot.data()!);
+        print('Created new Firestore document for: $email');
       } else {
-        final userData = Map<String, dynamic>.from(snapshot.value as Map);
+        // READ user data from Firestore
+        final userData = snapshot.data()!;
         user = UserModel.fromJson(userData);
       }
 
@@ -372,11 +587,146 @@ class AuthService {
     }
   }
 
+  // Google Sign-In instance
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: ['email', 'profile'],
+  );
+
   /// Logout user
   Future<void> logout() async {
+    try {
+      await _googleSignIn.signOut();
+    } catch (e) {
+      // Ignore Google sign out errors
+    }
     await _auth.signOut();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyCurrentUser);
+  }
+
+  /// Sign in with Google
+  Future<AuthResult> signInWithGoogle() async {
+    try {
+      print('Starting Google Sign-In...');
+
+      // Trigger the Google Sign-In flow
+      final googleUser = await _googleSignIn.signIn();
+
+      if (googleUser == null) {
+        // User cancelled the sign-in
+        return AuthResult(
+          success: false,
+          errorMessage: 'Google sign-in was cancelled',
+        );
+      }
+
+      print('Google user: ${googleUser.email}');
+
+      // Get auth details from Google
+      final googleAuth = await googleUser.authentication;
+
+      // Create Firebase credential
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // Sign in to Firebase with Google credential
+      final userCredential = await _auth.signInWithCredential(credential);
+
+      print('Firebase Auth success: ${userCredential.user?.uid}');
+
+      final email = userCredential.user!.email ?? '';
+      final displayName = userCredential.user!.displayName ?? email.split('@').first;
+
+      // First check if user exists by UID
+      var snapshot = await _firestore
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .get();
+
+      UserModel user;
+
+      if (!snapshot.exists) {
+        // Check if admin already created a user with this email
+        final emailQuery = await _firestore
+            .collection('users')
+            .where('email', isEqualTo: email.toLowerCase())
+            .limit(1)
+            .get();
+
+        if (emailQuery.docs.isNotEmpty) {
+          // User was pre-registered by admin with this email
+          // Update the document ID to match Firebase Auth UID
+          final existingData = emailQuery.docs.first.data();
+          final oldDocId = emailQuery.docs.first.id;
+
+          // Create new document with correct UID
+          await _firestore.collection('users').doc(userCredential.user!.uid).set({
+            ...existingData,
+            'id': userCredential.user!.uid,
+            'fullName': existingData['fullName'] ?? displayName,
+          });
+
+          // Delete old document with wrong ID
+          await _firestore.collection('users').doc(oldDocId).delete();
+
+          print('Migrated pre-registered user to Google UID: $email');
+
+          // Read the updated document
+          final newSnapshot = await _firestore
+              .collection('users')
+              .doc(userCredential.user!.uid)
+              .get();
+          user = UserModel.fromJson(newSnapshot.data()!);
+        } else {
+          // Completely new user - create in Firestore
+          // Determine role from email pattern
+          UserRole role = UserRole.student; // default for Google users
+          final emailLower = email.toLowerCase();
+          if (emailLower.contains('admin')) {
+            role = UserRole.admin;
+          } else if (emailLower.contains('staff') ||
+              emailLower.contains('prof') ||
+              emailLower.contains('teacher')) {
+            role = UserRole.staff;
+          }
+
+          final department = getDepartmentFromEmail(email);
+
+          await _firestore.collection('users').doc(userCredential.user!.uid).set({
+            'id': userCredential.user!.uid,
+            'fullName': displayName,
+            'email': email.toLowerCase(),
+            'role': role.name,
+            'department': department.name,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+
+          final newSnapshot = await _firestore
+              .collection('users')
+              .doc(userCredential.user!.uid)
+              .get();
+          user = UserModel.fromJson(newSnapshot.data()!);
+          print('Created new user from Google: $email');
+        }
+      } else {
+        user = UserModel.fromJson(snapshot.data()!);
+      }
+
+      // Save session locally
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_keyCurrentUser, user.id);
+
+      print('Google login successful for role: ${user.role}');
+      return AuthResult(success: true, userId: user.id, role: user.role);
+    } catch (e) {
+      print('Google Sign-In error: $e');
+      return AuthResult(
+        success: false,
+        errorMessage: 'Google sign-in failed: ${e.toString()}',
+      );
+    }
   }
 
   /// Check if user is logged in
@@ -390,11 +740,14 @@ class AuthService {
     if (firebaseUser == null) return null;
 
     try {
-      final snapshot = await _database.child('users').child(firebaseUser.uid).get();
-      
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(firebaseUser.uid)
+          .get();
+
       if (!snapshot.exists) return null;
-      
-      final userData = Map<String, dynamic>.from(snapshot.value as Map);
+
+      final userData = snapshot.data()!;
       return UserModel.fromJson(userData);
     } catch (e) {
       print('Error getting current user: $e');

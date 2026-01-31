@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/floating_icons_background.dart';
 import '../login/login_screen.dart';
+import '../notices/student_notice_list_screen.dart';
+import '../timetable/student_timetable_screen.dart';
+import '../results/student_results_screen.dart';
+import '../courses/student_courses_screen.dart';
+import '../attendance/student_attendance_screen.dart';
 
 class StudentDashboard extends StatefulWidget {
   const StudentDashboard({super.key});
@@ -136,10 +141,23 @@ class _StudentDashboardState extends State<StudentDashboard> {
                         children: [
                           Text('Welcome, ${_currentUser?.fullName ?? 'Student'}!', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-                            child: const Text('Student', style: TextStyle(color: Colors.white, fontSize: 12)),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                                child: const Text('Student', style: TextStyle(color: Colors.white, fontSize: 12)),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                                decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), borderRadius: BorderRadius.circular(12)),
+                                child: Text(
+                                  _currentUser?.department.shortName ?? 'N/A',
+                                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -161,21 +179,79 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 crossAxisSpacing: 12,
                 childAspectRatio: 1.2,
                 children: [
-                  _actionCard('Notices', Icons.notifications, const Color(0xFFE53E3E), () => _showFeatureMessage('Notices')),
-                  _actionCard('Timetable', Icons.calendar_today, const Color(0xFF38A169), () => _showFeatureMessage('Timetable')),
-                  _actionCard('Results', Icons.assessment, const Color(0xFFD69E2E), () => _showFeatureMessage('Results')),
-                  _actionCard('Courses', Icons.menu_book, const Color(0xFF805AD5), () => _showFeatureMessage('Courses')),
+                  _actionCard('Notices', Icons.notifications, const Color(0xFFE53E3E), () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => StudentNoticeListScreen(
+                        departmentId: _currentUser?.department.name,
+                        departmentName: _currentUser?.department.displayName,
+                      ),
+                    ));
+                  }),
+                  _actionCard('Timetable', Icons.calendar_today, const Color(0xFF38A169), () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => StudentTimetableScreen(
+                        departmentId: _currentUser?.department.name,
+                      ),
+                    ));
+                  }),
+                  _actionCard('Results', Icons.assessment, const Color(0xFFD69E2E), () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => StudentResultsScreen(
+                        studentId: _currentUser?.id,
+                      ),
+                    ));
+                  }),
+                  _actionCard('Courses', Icons.menu_book, const Color(0xFF805AD5), () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => StudentCoursesScreen(
+                        departmentId: _currentUser?.department.name,
+                      ),
+                    ));
+                  }),
+                  _actionCard('Attendance', Icons.fact_check, const Color(0xFF3182CE), () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => StudentAttendanceScreen(
+                        studentId: _currentUser?.id,
+                        studentName: _currentUser?.fullName,
+                      ),
+                    ));
+                  }),
                 ],
               ),
               const SizedBox(height: 24),
 
-              // Recent Notices Section
-              const Text('Recent Notices', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF2D3748))),
-              const SizedBox(height: 12),
-              
-              _noticeCard('Exam Schedule', 'Final exams will start from February 15, 2026', 'Today', const Color(0xFFE53E3E)),
-              _noticeCard('Holiday Notice', 'Republic Day holiday on January 26, 2026', 'Yesterday', const Color(0xFF38A169)),
-              _noticeCard('Workshop', 'AI Workshop scheduled for February 5, 2026', '3 days ago', const Color(0xFF3182CE)),
+              // Department Info Section
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Your Department', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF2D3748))),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.school, color: Color(0xFF3182CE)),
+                        const SizedBox(width: 8),
+                        Text(
+                          _currentUser?.department.displayName ?? 'Not Assigned',
+                          style: const TextStyle(color: Color(0xFF4A5568), fontSize: 14),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'All notices, results, and attendance will be shown based on your department.',
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -205,33 +281,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
             Text(title, style: const TextStyle(color: Color(0xFF2D3748), fontWeight: FontWeight.w600, fontSize: 14)),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _noticeCard(String title, String description, String time, Color color) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border(left: BorderSide(color: color, width: 4)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2D3748), fontSize: 16)),
-              Text(time, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(description, style: const TextStyle(color: Color(0xFF4A5568), fontSize: 14)),
-        ],
       ),
     );
   }
