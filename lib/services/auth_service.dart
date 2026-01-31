@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// User roles enum
 enum UserRole { admin, student, staff }
@@ -590,6 +591,10 @@ class AuthService {
   // Google Sign-In instance
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
+    // Required for Web - Get this from Google Cloud Console > APIs & Credentials > OAuth 2.0 Client IDs > Web client
+    clientId: kIsWeb 
+        ? '524881463867-hup5jtubm5a90fcam4viqktq7ua34tta.apps.googleusercontent.com'
+        : null,
   );
 
   /// Logout user
@@ -607,23 +612,58 @@ class AuthService {
   /// Sign in with Google
   Future<AuthResult> signInWithGoogle() async {
     try {
+      print('========================================');
       print('Starting Google Sign-In...');
+      print('Platform: ${kIsWeb ? "Web" : "Mobile"}');
+      print('========================================');
 
-      // Trigger the Google Sign-In flow
-      final googleUser = await _googleSignIn.signIn();
+      GoogleSignInAccount? googleUser;
+      
+      try {
+        // Try silent sign in first (for returning users)
+        print('Attempting silent sign-in...');
+        googleUser = await _googleSignIn.signInSilently();
+        print('Silent sign-in result: ${googleUser?.email ?? "null"}');
+      } catch (e) {
+        print('Silent sign-in failed: $e');
+      }
+
+      // If silent sign-in didn't work, show the sign-in dialog
+      if (googleUser == null) {
+        print('Calling interactive signIn()...');
+        try {
+          googleUser = await _googleSignIn.signIn();
+          print('Interactive sign-in completed: ${googleUser?.email ?? "null"}');
+        } catch (e) {
+          print('Interactive sign-in error: $e');
+          return AuthResult(
+            success: false,
+            errorMessage: 'Google sign-in error: ${e.toString()}',
+          );
+        }
+      }
 
       if (googleUser == null) {
-        // User cancelled the sign-in
+        print('Google user is null - sign-in was cancelled');
         return AuthResult(
           success: false,
           errorMessage: 'Google sign-in was cancelled',
         );
       }
 
-      print('Google user: ${googleUser.email}');
+      print('Google user obtained: ${googleUser.email}');
 
       // Get auth details from Google
+      print('Getting authentication tokens...');
       final googleAuth = await googleUser.authentication;
+      print('Got tokens - accessToken: ${googleAuth.accessToken != null}, idToken: ${googleAuth.idToken != null}');
+
+      if (googleAuth.idToken == null) {
+        return AuthResult(
+          success: false,
+          errorMessage: 'Failed to get Google ID token. Please try again.',
+        );
+      }
 
       // Create Firebase credential
       final credential = GoogleAuthProvider.credential(
@@ -632,6 +672,7 @@ class AuthService {
       );
 
       // Sign in to Firebase with Google credential
+      print('Signing in to Firebase...');
       final userCredential = await _auth.signInWithCredential(credential);
 
       print('Firebase Auth success: ${userCredential.user?.uid}');
@@ -720,8 +761,15 @@ class AuthService {
 
       print('Google login successful for role: ${user.role}');
       return AuthResult(success: true, userId: user.id, role: user.role);
-    } catch (e) {
+    } on FirebaseAuthException catch (e) {
+      print('Firebase Auth error: ${e.code} - ${e.message}');
+      return AuthResult(
+        success: false,
+        errorMessage: 'Firebase error: ${e.message}',
+      );
+    } catch (e, stackTrace) {
       print('Google Sign-In error: $e');
+      print('Stack trace: $stackTrace');
       return AuthResult(
         success: false,
         errorMessage: 'Google sign-in failed: ${e.toString()}',

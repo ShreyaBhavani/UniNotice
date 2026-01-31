@@ -129,10 +129,10 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _isLoading = true);
 
     try {
-      final result = await _authService.signInWithGoogle().timeout(
-        const Duration(seconds: 60),
-        onTimeout: () => AuthResult(success: false, errorMessage: 'Sign-in timeout. Check your internet.'),
-      );
+      print('Login screen: Starting Google sign-in...');
+      // Remove timeout - Google Sign-In manages its own popup/redirect timing
+      final result = await _authService.signInWithGoogle();
+      print('Login screen: Got result - success: ${result.success}');
 
       if (result.success && mounted) {
         // Use the role from the result directly - it's already set
@@ -152,6 +152,7 @@ class _LoginScreenState extends State<LoginScreen>
         _showError(result.errorMessage ?? 'Google sign-in failed');
       }
     } catch (e) {
+      print('Login screen: Exception - $e');
       if (mounted) _showError('An error occurred during Google sign-in: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
