@@ -43,7 +43,7 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
   Future<void> _loadCourses() async {
     setState(() => _isLoading = true);
     try {
-      var courses;
+      List<CourseModel> courses;
       
       // For admin: show all courses
       if (_isAdmin) {
