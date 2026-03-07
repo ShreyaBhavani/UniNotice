@@ -49,6 +49,9 @@ class _AssignCoursesDialogState extends State<AssignCoursesDialog> {
   Future<void> _saveCourseAssignments() async {
     setState(() => _isSaving = true);
     try {
+      // Keep the previous assignments to know what changed
+      final previousAssigned = Set<String>.from(widget.staff.assignedCourseIds);
+
       final updatedStaff = widget.staff.copyWith(
         assignedCourseIds: _selectedCourseIds.toList(),
       );
@@ -58,6 +61,28 @@ class _AssignCoursesDialogState extends State<AssignCoursesDialog> {
       if (mounted) {
         setState(() => _isSaving = false);
         if (success) {
+          // Compute which courses were added/removed for this staff
+          final newlyAssigned = _selectedCourseIds.difference(previousAssigned);
+          final removed = previousAssigned.difference(_selectedCourseIds);
+
+          // Update course documents so staffId/staffName match assignments
+          for (final course in _availableCourses) {
+            if (newlyAssigned.contains(course.courseId)) {
+              final updatedCourse = course.copyWith(
+                staffId: widget.staff.staffId,
+                staffName: widget.staff.fullName,
+              );
+              await _dbService.updateCourse(updatedCourse);
+            } else if (removed.contains(course.courseId) &&
+                course.staffId == widget.staff.staffId) {
+              final clearedCourse = course.copyWith(
+                staffId: '',
+                staffName: '',
+              );
+              await _dbService.updateCourse(clearedCourse);
+            }
+          }
+
           widget.onSuccess();
           if (mounted) {
             Navigator.pop(context);

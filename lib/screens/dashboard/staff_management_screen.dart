@@ -28,12 +28,24 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     setState(() => _isLoading = true);
     try {
       final staff = await _dbService.getAllStaff();
-      
-      // Load courses for each staff member
+      // Fetch all active courses once
+      final allCourses = await _dbService.getAllCourses();
+
+      // Build course list for each staff member (supporting new + old data)
       final coursesMap = <String, List<CourseModel>>{};
       for (var s in staff) {
-        final courses = await _dbService.getCoursesForStaff(s.staffId);
-        coursesMap[s.staffId] = courses;
+        final Set<String> candidateIds = {s.staffId, s.userId};
+        final String nameLower = s.fullName.toLowerCase();
+        final Set<String> assignedCourseIds = s.assignedCourseIds.toSet();
+
+        final assigned = allCourses.where((course) {
+          final matchesId = candidateIds.contains(course.staffId);
+          final matchesName = course.staffName.toLowerCase() == nameLower;
+          final matchesLegacy = assignedCourseIds.contains(course.courseId);
+          return matchesId || matchesName || matchesLegacy;
+        }).toList();
+
+        coursesMap[s.staffId] = assigned;
       }
 
       setState(() {
@@ -45,6 +57,54 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
       print('Error loading staff: $e');
       setState(() => _isLoading = false);
       _showSnackBar('Error loading staff', Colors.red);
+    }
+  }
+
+  Future<void> _confirmRemoveCourse(StaffProfile staff, CourseModel course) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Course'),
+        content: Text('Remove "${course.courseName}" from ${staff.fullName}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _removeCourseFromStaff(staff, course);
+    }
+  }
+
+  Future<void> _removeCourseFromStaff(StaffProfile staff, CourseModel course) async {
+    try {
+      // Update staff profile: remove courseId
+      final updatedIds = List<String>.from(staff.assignedCourseIds)
+        ..remove(course.courseId);
+      final updatedStaff = staff.copyWith(assignedCourseIds: updatedIds);
+
+      final staffOk = await _dbService.updateStaffProfile(updatedStaff);
+
+      // Update course: clear staffId/staffName
+      final clearedCourse = course.copyWith(staffId: '', staffName: '');
+      final courseOk = await _dbService.updateCourse(clearedCourse);
+
+      if (staffOk && courseOk) {
+        _showSnackBar('Course deallocated from staff', Colors.green);
+        await _loadStaffAndCourses();
+      } else {
+        _showSnackBar('Failed to deallocate course', Colors.red);
+      }
+    } catch (e) {
+      _showSnackBar('Error: $e', Colors.red);
     }
   }
 
@@ -244,7 +304,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                                 children: assignedCourses.map((course) {
                                   return Container(
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
+                                      horizontal: 10,
                                       vertical: 6,
                                     ),
                                     decoration: BoxDecoration(
@@ -254,23 +314,37 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                                         color: const Color(0xFF0088CC).withOpacity(0.3),
                                       ),
                                     ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                    child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Text(
-                                          course.courseName,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 11,
-                                            color: Color(0xFF0088CC),
-                                          ),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              course.courseName,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 11,
+                                                color: Color(0xFF0088CC),
+                                              ),
+                                            ),
+                                            Text(
+                                              'Sem ${course.semester} • ${course.departmentName}',
+                                              style: TextStyle(
+                                                fontSize: 9,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                        Text(
-                                          'Sem ${course.semester} • ${course.departmentName}',
-                                          style: TextStyle(
-                                            fontSize: 9,
-                                            color: Colors.grey.shade600,
+                                        const SizedBox(width: 4),
+                                        GestureDetector(
+                                          onTap: () => _confirmRemoveCourse(staff, course),
+                                          child: const Icon(
+                                            Icons.close,
+                                            size: 14,
+                                            color: Colors.redAccent,
                                           ),
                                         ),
                                       ],

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
+import '../../services/database_service.dart';
+import '../../models/student_model.dart';
+import '../../models/timetable_model.dart';
 import '../../widgets/floating_icons_background.dart';
 import '../../widgets/animated_widgets.dart';
 import '../login/login_screen.dart';
@@ -8,6 +11,7 @@ import '../timetable/student_timetable_screen.dart';
 import '../results/student_results_screen.dart';
 import '../courses/student_courses_screen.dart';
 import '../attendance/student_attendance_screen.dart';
+import '../../services/notification_service.dart';
 
 class StudentDashboard extends StatefulWidget {
   const StudentDashboard({super.key});
@@ -18,8 +22,11 @@ class StudentDashboard extends StatefulWidget {
 
 class _StudentDashboardState extends State<StudentDashboard> with TickerProviderStateMixin {
   final _authService = AuthService();
+  final _dbService = DatabaseService();
   UserModel? _currentUser;
+  StudentProfile? _studentProfile;
   bool _isLoading = true;
+  int _todayClasses = 0;
   
   // Animation controllers
   late AnimationController _welcomeController;
@@ -27,6 +34,66 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
   late Animation<double> _welcomeFade;
   late Animation<Offset> _welcomeSlide;
   late List<Animation<double>> _cardAnimations;
+
+  /// Compute current semester dynamically from batch rules.
+  ///
+  /// Rules (for year suffixes, e.g. 22, 23, 24, 25 when current year is 2026):
+  /// - Normal batch (e.g. "22", "23") uses that number directly.
+  /// - Diploma-to-degree batch (e.g. "D23", "D24") maps to previous year
+  ///   so that 22 and D23 are both treated as 8th sem in 2026.
+  ///
+  /// We first try rollNumber; if not available, we fall back to the email
+  /// local-part (e.g. "23IT009" from 23IT009@chausat.edu.in).
+  /// The result is clamped between 1 and 8. If parsing fails, we fall back
+  /// to the stored currentSemester or 1 so existing behavior is preserved.
+  int _computeCurrentSemester(StudentProfile? profile) {
+    // Prefer rollNumber if present, else fall back to email local-part.
+    String? source;
+    if (profile != null && profile.rollNumber.trim().isNotEmpty) {
+      source = profile.rollNumber.trim();
+    } else if (_currentUser?.email != null && _currentUser!.email.isNotEmpty) {
+      source = _currentUser!.email.split('@').first.trim();
+    }
+
+    int? computedSem;
+
+    if (source != null && source.isNotEmpty) {
+      // Extract a batch code like "22" or "D23" from the start.
+      final regex = RegExp(r'^(D?)(\d{2})');
+      final match = regex.firstMatch(source);
+
+      if (match != null) {
+        final isDiploma = match.group(1) == 'D';
+        final yearSuffixStr = match.group(2);
+        final yearSuffix = int.tryParse(yearSuffixStr ?? '');
+
+        if (yearSuffix != null) {
+          // Map diploma batches to previous year (D23 -> baseYear 22, etc.)
+          final baseYear = isDiploma ? (yearSuffix - 1) : yearSuffix;
+
+          // Use last two digits of current year (e.g. 2026 -> 26)
+          final now = DateTime.now();
+          final currentYearSuffix = now.year % 100;
+
+          final rawSem = 2 * (currentYearSuffix - baseYear);
+          if (rawSem > 0) {
+            // Clamp between 1 and 8
+            computedSem = rawSem.clamp(1, 8);
+          }
+        }
+      }
+    }
+
+    if (computedSem != null) {
+      return computedSem;
+    }
+
+    if (profile != null) {
+      return profile.currentSemester;
+    }
+
+    return 1;
+  }
 
   @override
   void initState() {
@@ -76,16 +143,84 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
 
   Future<void> _loadUserData() async {
     final user = await _authService.getCurrentUser();
+    StudentProfile? studentProfile;
+
+    // If logged-in user is a student, load their profile to get current semester
+    if (user != null && user.isStudent) {
+      studentProfile = await _dbService.getStudentProfile(user.id);
+    }
+
     if (mounted) {
       setState(() {
         _currentUser = user;
+        _studentProfile = studentProfile;
         _isLoading = false;
       });
+      // Load today's classes summary after basic data is ready
+      _loadTodayClasses();
       // Start animations after data loads
       _welcomeController.forward();
       Future.delayed(const Duration(milliseconds: 300), () {
         _cardsController.forward();
       });
+
+      // Schedule a daily reminder for students to check timetable/attendance
+      if (user != null && user.isStudent) {
+        await NotificationService().scheduleDailyTimetableReminder();
+      }
+    }
+  }
+
+  Future<void> _loadTodayClasses() async {
+    final user = _currentUser;
+    if (user == null || !user.isStudent) return;
+
+    try {
+      final deptId = user.department.name;
+      final sem = _computeCurrentSemester(_studentProfile);
+
+      final entries = await _dbService.getTimetableForStudent(
+        departmentId: deptId,
+        semester: sem,
+      );
+
+      // Map DateTime weekday (1=Mon..7=Sun) to DayOfWeek enum
+      final weekday = DateTime.now().weekday;
+      DayOfWeek? todayEnum;
+      switch (weekday) {
+        case DateTime.monday:
+          todayEnum = DayOfWeek.monday;
+          break;
+        case DateTime.tuesday:
+          todayEnum = DayOfWeek.tuesday;
+          break;
+        case DateTime.wednesday:
+          todayEnum = DayOfWeek.wednesday;
+          break;
+        case DateTime.thursday:
+          todayEnum = DayOfWeek.thursday;
+          break;
+        case DateTime.friday:
+          todayEnum = DayOfWeek.friday;
+          break;
+        case DateTime.saturday:
+          todayEnum = DayOfWeek.saturday;
+          break;
+        case DateTime.sunday:
+          todayEnum = DayOfWeek.sunday;
+          break;
+      }
+
+      if (todayEnum == null) return;
+
+      final todayCount = entries.where((e) => e.day == todayEnum).length;
+
+      if (!mounted) return;
+      setState(() {
+        _todayClasses = todayCount;
+      });
+    } catch (_) {
+      // Ignore errors for summary; main functionality remains unaffected
     }
   }
 
@@ -211,6 +346,11 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
                     child: _buildWelcomeCard(),
                   ),
                 ),
+                const SizedBox(height: 16),
+
+                // Today's classes summary
+                _buildTodaySummaryCard(),
+
                 const SizedBox(height: 24),
 
                 // Quick Actions with stagger animation
@@ -349,8 +489,69 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
     );
   }
 
+  Widget _buildTodaySummaryCard() {
+    // Only relevant for students
+    if (!(_currentUser?.isStudent ?? false)) {
+      return const SizedBox.shrink();
+    }
+
+    final label = _todayClasses == 1 ? 'class today' : 'classes today';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF38A169).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.today, color: Color(0xFF38A169)),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Today's Classes",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2D3748),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '$_todayClasses $label',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   void _handleCardTap(String title) {
     Widget? screen;
+    // Compute semester dynamically for timetable/courses based on rollNumber rules.
+    final effectiveSemester = _computeCurrentSemester(_studentProfile);
     switch (title) {
       case 'Notices':
         screen = StudentNoticeListScreen(
@@ -361,6 +562,7 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
       case 'Timetable':
         screen = StudentTimetableScreen(
           departmentId: _currentUser?.department.name,
+          semester: effectiveSemester,
         );
         break;
       case 'Results':
@@ -371,11 +573,14 @@ class _StudentDashboardState extends State<StudentDashboard> with TickerProvider
       case 'Courses':
         screen = StudentCoursesScreen(
           departmentId: _currentUser?.department.name,
+          semester: effectiveSemester,
         );
         break;
       case 'Attendance':
         screen = StudentAttendanceScreen(
-          studentId: _currentUser?.id,
+          // Use the student profile's ID so attendance
+          // records (which store studentId) match correctly.
+          studentId: _studentProfile?.studentId ?? _currentUser?.id,
           studentName: _currentUser?.fullName,
         );
         break;

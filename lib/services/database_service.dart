@@ -664,6 +664,23 @@ class DatabaseService {
     }
   }
 
+  /// READ: Get staff profiles by email (for backward compatibility / matching)
+  Future<List<StaffProfile>> getStaffProfilesByEmail(String email) async {
+    try {
+      final snapshot = await _firestore
+          .collection('staffProfiles')
+          .where('email', isEqualTo: email.toLowerCase())
+          .get();
+
+      return snapshot.docs
+          .map((doc) => StaffProfile.fromJson(doc.data()))
+          .toList();
+    } catch (e) {
+      print('Error fetching staff profiles by email: $e');
+      return [];
+    }
+  }
+
   /// READ: Get all staff
   Future<List<StaffProfile>> getAllStaff() async {
     try {
@@ -709,10 +726,27 @@ class DatabaseService {
   /// UPDATE: Update staff profile
   Future<bool> updateStaffProfile(StaffProfile profile) async {
     try {
-      await _firestore
-          .collection('staffProfiles')
-          .doc(profile.staffId)
-          .update(profile.toJson());
+      final staffProfiles = _firestore.collection('staffProfiles');
+
+      // Preferred path: document id == staffId
+      final directDoc = await staffProfiles.doc(profile.staffId).get();
+
+      if (directDoc.exists) {
+        await staffProfiles.doc(profile.staffId).update(profile.toJson());
+      } else {
+        // Backward compatibility for older data where doc ids were random
+        final query = await staffProfiles
+            .where('staffId', isEqualTo: profile.staffId)
+            .limit(1)
+            .get();
+
+        if (query.docs.isNotEmpty) {
+          await staffProfiles.doc(query.docs.first.id).update(profile.toJson());
+        } else {
+          // As a final fallback, create/overwrite doc with staffId as id
+          await staffProfiles.doc(profile.staffId).set(profile.toJson());
+        }
+      }
       return true;
     } catch (e) {
       print('Error updating staff profile: $e');
@@ -953,8 +987,8 @@ class DatabaseService {
             .get();
 
         if (existingProfile.docs.isEmpty) {
-          // Create staff profile
-          await _firestore.collection('staffProfiles').add({
+          // Create staff profile (doc id = user id)
+          await _firestore.collection('staffProfiles').doc(userId).set({
             'staffId': userId,
             'userId': userId,
             'fullName': fullName,

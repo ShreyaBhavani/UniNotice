@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/timetable_model.dart';
 import '../../services/database_service.dart';
+import '../../services/auth_service.dart';
 
 /// Staff Schedule Screen - READ Operation
 class StaffScheduleScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class StaffScheduleScreen extends StatefulWidget {
 class _StaffScheduleScreenState extends State<StaffScheduleScreen>
     with SingleTickerProviderStateMixin {
   final _dbService = DatabaseService();
+  final _authService = AuthService();
   late TabController _tabController;
   
   List<TimetableEntry> _allEntries = [];
@@ -50,11 +52,53 @@ class _StaffScheduleScreenState extends State<StaffScheduleScreen>
   Future<void> _loadSchedule() async {
     setState(() => _isLoading = true);
     try {
-      final staffId = widget.staffId ?? 'demo_staff';
-      var entries = await _dbService.getTimetableForStaff(staffId);
+      final staffUserId = widget.staffId;
+      List<TimetableEntry> entries = [];
 
-      // Use demo data if empty
-      if (entries.isEmpty) {
+      if (staffUserId != null && staffUserId.isNotEmpty) {
+        // Build a set of candidate staff IDs from multiple sources
+        final Set<String> candidateStaffIds = {};
+
+        // 1) Directly from the logged-in user id
+        candidateStaffIds.add(staffUserId);
+
+        // 2) Staff profile found by userId
+        final profileById = await _dbService.getStaffProfile(staffUserId);
+        if (profileById != null) {
+          if (profileById.staffId.isNotEmpty) {
+            candidateStaffIds.add(profileById.staffId);
+          }
+          if (profileById.userId.isNotEmpty) {
+            candidateStaffIds.add(profileById.userId);
+          }
+        }
+
+        // 3) Staff profiles matched by email (handles older data / recreated accounts)
+        final currentUser = await _authService.getCurrentUser();
+        final email = currentUser?.email.toLowerCase();
+        if (email != null && email.isNotEmpty) {
+          final profilesByEmail = await _dbService.getStaffProfilesByEmail(email);
+          for (final p in profilesByEmail) {
+            if (p.staffId.isNotEmpty) {
+              candidateStaffIds.add(p.staffId);
+            }
+            if (p.userId.isNotEmpty) {
+              candidateStaffIds.add(p.userId);
+            }
+          }
+        }
+
+        // Fetch timetable entries for all candidate staff IDs and merge
+        for (final id in candidateStaffIds) {
+          final list = await _dbService.getTimetableForStaff(id);
+          for (final e in list) {
+            if (!entries.any((x) => x.entryId == e.entryId)) {
+              entries.add(e);
+            }
+          }
+        }
+      } else {
+        // Fallback demo schedule only when opened without a staffId
         entries = _createDemoSchedule();
       }
 

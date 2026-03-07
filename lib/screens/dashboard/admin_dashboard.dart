@@ -6,10 +6,11 @@ import '../login/login_screen.dart';
 import '../notices/staff_notice_list_screen.dart';
 import '../attendance/staff_attendance_list_screen.dart';
 import '../grades/staff_grades_screen.dart';
-import '../timetable/staff_schedule_screen.dart';
+import '../timetable/admin_timetable_screen.dart';
 import '../courses/student_courses_screen.dart';
 import '../results/student_results_screen.dart';
 import 'assign_courses_dialog.dart';
+import 'course_management_screen.dart';
 import 'staff_management_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
@@ -91,6 +92,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
     final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    final adminPasswordController = TextEditingController();
     UserRole selectedRole = UserRole.student;
 
     showDialog(
@@ -130,8 +134,25 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         : null,
                   ),
                   const SizedBox(height: 12),
+                  TextFormField(
+                    controller: passwordController,
+                    obscureText: true,
+                    decoration: _inputDecoration('Initial Password (set by admin)', Icons.lock),
+                    validator: _authService.validatePassword,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: confirmPasswordController,
+                    obscureText: true,
+                    decoration: _inputDecoration('Confirm Password', Icons.lock_outline),
+                    validator: (value) => _authService.validateConfirmPassword(
+                      passwordController.text,
+                      value,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Text(
-                    'Note: Users will set their password on first login',
+                    'Admin sets the initial password and shares it with the user.',
                     style: TextStyle(
                       color: Colors.grey.shade600,
                       fontSize: 12,
@@ -139,6 +160,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  TextFormField(
+                    controller: adminPasswordController,
+                    obscureText: true,
+                    decoration: _inputDecoration('Your admin password (to confirm)', Icons.verified_user),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Enter your admin password to create accounts';
+                      }
+                      return null;
+                    },
+                  ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     decoration: BoxDecoration(
@@ -186,12 +218,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
             ElevatedButton(
               onPressed: () async {
                 if (formKey.currentState!.validate()) {
-                  // Use createUserInFirestore instead of registerUser
-                  // This doesn't affect the admin's current session
-                  final result = await _authService.createUserInFirestore(
+                  final result = await _authService.registerUser(
                     fullName: nameController.text.trim(),
                     email: emailController.text.trim(),
+                    password: passwordController.text.trim(),
                     role: selectedRole,
+                    // Optional: keep admin logged in by re-authenticating
+                    adminEmail: _currentUser?.email,
+                    adminPassword: adminPasswordController.text.trim(),
                   );
                   if (mounted) {
                     Navigator.pop(context);
@@ -711,7 +745,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const StaffScheduleScreen(),
+                            builder: (_) => const AdminTimetableScreen(),
                           ),
                         );
                       },
@@ -724,7 +758,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const StudentCoursesScreen(),
+                            builder: (_) => const CourseManagementScreen(),
                           ),
                         );
                       },

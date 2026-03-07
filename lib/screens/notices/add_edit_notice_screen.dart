@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/notice_model.dart';
 import '../../services/database_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/auth_service.dart';
 
 /// Add/Edit Notice Screen - CREATE & UPDATE Operations
@@ -177,6 +178,12 @@ class _AddEditNoticeScreenState extends State<AddEditNoticeScreen> {
         success = await _dbService.updateNotice(notice);
       } else {
         success = await _dbService.createNotice(notice);
+        // Trigger an instant local notification for new notice
+        await NotificationService().showInstantNotification(
+          title: 'New College Notice',
+          body: _titleController.text.trim(),
+          payload: 'open_student_dashboard',
+        );
       }
 
       setState(() => _isLoading = false);

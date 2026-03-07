@@ -138,16 +138,56 @@ class _CourseManagementScreenState extends State<CourseManagementScreen> {
           ),
         ),
         actions: [
-          ElevatedButton(
+          TextButton(
             onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => _confirmAndDeleteCourse(course, closeDialog: true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0088CC),
+              backgroundColor: Colors.red,
             ),
-            child: const Text('Close', style: TextStyle(color: Colors.white)),
+            icon: const Icon(Icons.delete, color: Colors.white),
+            label: const Text('Delete Course', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _confirmAndDeleteCourse(CourseModel course, {bool closeDialog = false}) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Course'),
+        content: Text(
+          'Are you sure you want to delete "${course.courseName}" (${course.courseCode})?\n\nThis will hide the course from all lists but will not remove existing attendance/results.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final success = await _dbService.deleteCourse(course.courseId);
+      if (success) {
+        if (closeDialog) {
+          Navigator.pop(context); // close details dialog
+        }
+        _showSnackBar('Course deleted successfully', Colors.green);
+        _loadCourses();
+      } else {
+        _showSnackBar('Failed to delete course', Colors.red);
+      }
+    }
   }
 
   Widget _detailRow(IconData icon, String label, String value) {
@@ -298,23 +338,34 @@ class _CourseManagementScreenState extends State<CourseManagementScreen> {
                                       ],
                                     ),
                                   ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF0088CC).withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      'Sem ${course.semester}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
-                                        color: Color(0xFF0088CC),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF0088CC).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          'Sem ${course.semester}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: Color(0xFF0088CC),
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                      const SizedBox(height: 8),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                                        onPressed: () => _confirmAndDeleteCourse(course),
+                                        tooltip: 'Delete course',
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),

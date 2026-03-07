@@ -336,6 +336,25 @@ class AuthService {
 
       final newUserId = userCredential.user!.uid;
 
+      // If staff role, also create a staff profile for this user (doc id = user id)
+      if (role == UserRole.staff) {
+        await _firestore.collection('staffProfiles').doc(newUserId).set({
+          'staffId': newUserId,
+          'userId': newUserId,
+          'fullName': fullName,
+          'email': email.toLowerCase(),
+          'employeeId': 'EMP_${newUserId.substring(0, 8).toUpperCase()}',
+          'departmentId': department.name,
+          'departmentName': department.displayName,
+          'designation': 'Staff',
+          'assignedCourseIds': <String>[],
+          'joiningDate': DateTime.now().toIso8601String(),
+          'isActive': true,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        print('Staff profile created for: $newUserId');
+      }
+
       // Sign out the newly created user
       await _auth.signOut();
 
@@ -415,9 +434,9 @@ class AuthService {
 
       print('User created in Firestore: ${docRef.id}');
 
-      // If staff role, also create a staff profile
+      // If staff role, also create a staff profile (doc id = user id)
       if (role == UserRole.staff) {
-        await _firestore.collection('staffProfiles').add({
+        await _firestore.collection('staffProfiles').doc(docRef.id).set({
           'staffId': docRef.id,
           'userId': docRef.id,
           'fullName': fullName,
