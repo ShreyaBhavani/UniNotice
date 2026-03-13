@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+import 'database_service.dart';
+
 /// User roles enum
 enum UserRole { admin, student, staff }
 
@@ -846,6 +848,17 @@ class AuthService {
     // Save session locally
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyCurrentUser, user.id);
+
+    // Ensure a matching student profile exists for Google student accounts
+    // so that timetable, attendance, and results can use consistent data,
+    // even if the user signs in directly with Google.
+    try {
+      if (user.role == UserRole.student) {
+        await DatabaseService().createStudentProfilesForExistingStudents();
+      }
+    } catch (e) {
+      print('Error ensuring student profile for Google user: $e');
+    }
 
     print('Google login successful for role: ${user.role}');
     return AuthResult(success: true, userId: user.id, role: user.role);

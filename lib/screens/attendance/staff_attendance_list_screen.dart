@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/attendance_model.dart';
 import '../../models/course_model.dart';
+import '../../models/staff_model.dart';
 import '../../services/database_service.dart';
 import '../../services/auth_service.dart';
 import 'mark_attendance_screen.dart';
@@ -34,7 +35,22 @@ class _StaffAttendanceListScreenState extends State<StaffAttendanceListScreen> {
     setState(() => _isLoading = true);
     try {
       final user = await _authService.getCurrentUser();
-      final courses = await _dbService.getCoursesForStaff(user?.id ?? '');
+      StaffProfile? staffProfile;
+      if (user != null) {
+        staffProfile = await _dbService.getStaffProfile(user.id);
+        if (staffProfile == null) {
+          final matches = await _dbService.getStaffProfilesByEmail(user.email);
+          if (matches.isNotEmpty) {
+            staffProfile = matches.first;
+          }
+        }
+      }
+
+      final courses = await _dbService.getCoursesForStaff(
+        user?.id ?? '',
+        staffName: staffProfile?.fullName ?? user?.fullName,
+        assignedCourseIds: staffProfile?.assignedCourseIds,
+      );
       final attendance = await _dbService.getAttendanceByStaff(user?.id ?? '');
 
       setState(() {
@@ -234,19 +250,8 @@ class _StaffAttendanceListScreenState extends State<StaffAttendanceListScreen> {
 
   void _showCourseSelectionDialog() {
     if (_myCourses.isEmpty) {
-      // If no courses assigned, use sample courses for demo
-      _showSnackBar('No courses assigned. Using demo mode.', Colors.orange);
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => MarkAttendanceScreen(
-            courseId: 'demo_course',
-            courseName: 'Demo Course',
-            staffId: _currentUserId ?? '',
-            staffName: 'Staff',
-          ),
-        ),
-      ).then((_) => _loadData());
+      // If no courses assigned, show info and do not open demo screen
+      _showSnackBar('No courses assigned to you yet.', Colors.orange);
       return;
     }
 

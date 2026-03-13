@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import '../../models/student_model.dart';
 import '../../widgets/floating_icons_background.dart';
 import '../login/login_screen.dart';
 import '../notices/staff_notice_list_screen.dart';
@@ -22,6 +23,7 @@ class AdminDashboard extends StatefulWidget {
 
 class _AdminDashboardState extends State<AdminDashboard> {
   final _authService = AuthService();
+  final _dbService = DatabaseService();
   UserModel? _currentUser;
   List<UserModel> _allUsers = [];
   bool _isLoading = true;
@@ -42,6 +44,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
         _isLoading = false;
       });
     }
+
+    // Ensure staff and student profiles exist for all admin-created users.
+    // This runs idempotently on each load so the admin doesn't need to
+    // press any extra buttons, keeping behavior professional.
+    _autoMigrateProfiles();
   }
 
   Future<void> _handleLogout() async {
@@ -86,6 +93,43 @@ class _AdminDashboardState extends State<AdminDashboard> {
         );
       }
     }
+  }
+
+  /// Infer current semester from university batch rules using email pattern.
+  ///
+  /// Rules based on local-part (before @), for example:
+  /// - 22.. and D23.. => 8th sem
+  /// - 23.. and D24.. => 6th sem
+  /// - 24.. and D25.. => 4th sem
+  /// Implementation is dynamic based on the current year so it keeps working
+  /// as time passes. If parsing fails it falls back to 1.
+  int _inferSemesterFromEmail(String email) {
+    final localPart = email.split('@').first.trim().toUpperCase();
+
+    int? computedSem;
+
+    if (localPart.isNotEmpty) {
+      final regex = RegExp(r'^(D?)(\d{2})');
+      final match = regex.firstMatch(localPart);
+
+      if (match != null) {
+        final isDiploma = match.group(1) == 'D';
+        final yearSuffixStr = match.group(2);
+        final yearSuffix = int.tryParse(yearSuffixStr ?? '');
+
+        if (yearSuffix != null) {
+          final baseYear = isDiploma ? (yearSuffix - 1) : yearSuffix;
+          final now = DateTime.now();
+          final currentYearSuffix = now.year % 100;
+          final rawSem = 2 * (currentYearSuffix - baseYear);
+          if (rawSem > 0) {
+            computedSem = rawSem.clamp(1, 8).toInt();
+          }
+        }
+      }
+    }
+
+    return computedSem ?? 1;
   }
 
   void _showAddUserDialog() {
@@ -232,6 +276,31 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     if (result.success) {
                       _loadData();
                       _showSnackBar('User created successfully!', Colors.green);
+
+                      // Automatically create a student profile when admin
+                      // adds a new student user so other modules (timetable,
+                      // attendance, results) can rely on consistent data.
+                      if (selectedRole == UserRole.student && result.userId != null) {
+                        final email = emailController.text.trim().toLowerCase();
+                        final fullName = nameController.text.trim();
+                        final department = getDepartmentFromEmail(email);
+
+                        final profile = StudentProfile(
+                          studentId: result.userId!,
+                          userId: result.userId!,
+                          fullName: fullName,
+                          email: email,
+                          // Use local-part as roll number for now
+                          rollNumber: email.split('@').first.toUpperCase(),
+                          departmentId: department.name,
+                          departmentName: department.displayName,
+                          currentSemester: _inferSemesterFromEmail(email),
+                          enrolledCourseIds: const [],
+                          enrollmentDate: DateTime.now(),
+                        );
+
+                        await _dbService.createStudentProfile(profile);
+                      }
                       
                       // If staff was created, show course assignment dialog
                       if (selectedRole == UserRole.staff) {
@@ -493,6 +562,18 @@ class _AdminDashboardState extends State<AdminDashboard> {
           _showSnackBar('Migration failed: ${e.toString()}', Colors.red);
         }
       }
+    }
+  }
+
+  Future<void> _autoMigrateProfiles() async {
+    try {
+      await _dbService.createStaffProfilesForExistingStaff();
+      await _dbService.createStudentProfilesForExistingStudents();
+    } catch (e) {
+      // Log only; avoid disturbing admin UX with migration details
+      // in normal usage.
+      // ignore: avoid_print
+      print('Auto-migration of profiles failed: $e');
     }
   }
 
@@ -775,12 +856,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           ),
                         );
                       },
-                    ),
-                    _actionCard(
-                      'Migrate Staff',
-                      Icons.update,
-                      const Color(0xFF4299E1),
-                      _migrateExistingStaff,
                     ),
                     _actionCard(
                       'Results',

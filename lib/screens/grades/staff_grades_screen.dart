@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/result_model.dart';
 import '../../models/course_model.dart';
+import '../../models/staff_model.dart';
 import '../../services/database_service.dart';
 import '../../services/auth_service.dart';
 
@@ -31,7 +32,22 @@ class _StaffGradesScreenState extends State<StaffGradesScreen> {
     setState(() => _isLoading = true);
     try {
       final user = await _authService.getCurrentUser();
-      var courses = await _dbService.getCoursesForStaff(user?.id ?? '');
+      StaffProfile? staffProfile;
+      if (user != null) {
+        staffProfile = await _dbService.getStaffProfile(user.id);
+        if (staffProfile == null) {
+          final matches = await _dbService.getStaffProfilesByEmail(user.email);
+          if (matches.isNotEmpty) {
+            staffProfile = matches.first;
+          }
+        }
+      }
+
+      final courses = await _dbService.getCoursesForStaff(
+        user?.id ?? '',
+        staffName: staffProfile?.fullName ?? user?.fullName,
+        assignedCourseIds: staffProfile?.assignedCourseIds,
+      );
 
       setState(() {
         _myCourses = courses;

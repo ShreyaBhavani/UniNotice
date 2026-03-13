@@ -98,8 +98,8 @@ class _StaffScheduleScreenState extends State<StaffScheduleScreen>
           }
         }
       } else {
-        // Fallback demo schedule only when opened without a staffId
-        entries = _createDemoSchedule();
+        // If no staffId is provided, do not load demo data
+        entries = [];
       }
 
       Map<DayOfWeek, List<TimetableEntry>> grouped = {};
@@ -118,82 +118,7 @@ class _StaffScheduleScreenState extends State<StaffScheduleScreen>
     }
   }
 
-  List<TimetableEntry> _createDemoSchedule() {
-    final staffId = widget.staffId ?? 'demo_staff';
-    
-    return [
-      TimetableEntry(
-        entryId: 'staff_tt_1',
-        courseId: 'course_ds',
-        courseName: 'Data Structures',
-        courseCode: 'CS301',
-        day: DayOfWeek.monday,
-        startTime: '09:00',
-        endTime: '10:00',
-        room: 'Room 101',
-        staffId: staffId,
-        staffName: 'Staff',
-        departmentId: 'dept_cs',
-        semester: 3,
-      ),
-      TimetableEntry(
-        entryId: 'staff_tt_2',
-        courseId: 'course_ds',
-        courseName: 'Data Structures',
-        courseCode: 'CS301',
-        day: DayOfWeek.wednesday,
-        startTime: '11:00',
-        endTime: '12:00',
-        room: 'Room 101',
-        staffId: staffId,
-        staffName: 'Staff',
-        departmentId: 'dept_cs',
-        semester: 3,
-      ),
-      TimetableEntry(
-        entryId: 'staff_tt_3',
-        courseId: 'course_ds',
-        courseName: 'DS Lab',
-        courseCode: 'CS301L',
-        day: DayOfWeek.thursday,
-        startTime: '14:00',
-        endTime: '16:00',
-        room: 'Lab 1',
-        staffId: staffId,
-        staffName: 'Staff',
-        departmentId: 'dept_cs',
-        semester: 3,
-      ),
-      TimetableEntry(
-        entryId: 'staff_tt_4',
-        courseId: 'course_algo',
-        courseName: 'Algorithm Design',
-        courseCode: 'CS401',
-        day: DayOfWeek.tuesday,
-        startTime: '10:00',
-        endTime: '11:00',
-        room: 'Room 205',
-        staffId: staffId,
-        staffName: 'Staff',
-        departmentId: 'dept_cs',
-        semester: 4,
-      ),
-      TimetableEntry(
-        entryId: 'staff_tt_5',
-        courseId: 'course_algo',
-        courseName: 'Algorithm Design',
-        courseCode: 'CS401',
-        day: DayOfWeek.friday,
-        startTime: '09:00',
-        endTime: '10:00',
-        room: 'Room 205',
-        staffId: staffId,
-        staffName: 'Staff',
-        departmentId: 'dept_cs',
-        semester: 4,
-      ),
-    ];
-  }
+  
 
   @override
   Widget build(BuildContext context) {

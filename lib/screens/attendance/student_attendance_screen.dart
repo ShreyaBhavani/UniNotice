@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../../models/attendance_model.dart';
 import '../../services/database_service.dart';
 
@@ -160,6 +161,9 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
         ),
         const SizedBox(height: 20),
 
+        if (_attendanceSummary.isNotEmpty) _buildAttendanceChart(),
+        if (_attendanceSummary.isNotEmpty) const SizedBox(height: 20),
+
         // Course-wise Attendance
         const Text(
           'Course-wise Attendance',
@@ -169,6 +173,111 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
 
         ..._attendanceSummary.map((summary) => _buildCourseAttendanceCard(summary)),
       ],
+    );
+  }
+
+  /// Bar chart showing course-wise attendance percentages.
+  Widget _buildAttendanceChart() {
+    final barGroups = <BarChartGroupData>[];
+
+    for (int i = 0; i < _attendanceSummary.length; i++) {
+      final summary = _attendanceSummary[i];
+      final double percent = summary.percentage.clamp(0, 100).toDouble();
+
+      barGroups.add(
+        BarChartGroupData(
+          x: i,
+          barRods: [
+            BarChartRodData(
+              toY: percent,
+              width: 18,
+              borderRadius: BorderRadius.circular(6),
+              color: percent >= 75
+                  ? const Color(0xFF38A169)
+                  : (percent >= 60
+                      ? const Color(0xFFD69E2E)
+                      : const Color(0xFFE53E3E)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Card
+(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Attendance Overview (Chart)',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF2D3748),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 220,
+              child: BarChart(
+                BarChartData(
+                  maxY: 100,
+                  gridData: FlGridData(show: true, horizontalInterval: 25),
+                  borderData: FlBorderData(show: false),
+                  barTouchData: BarTouchData(enabled: true),
+                  titlesData: FlTitlesData(
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 32,
+                        interval: 25,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            '${value.toInt()}%',
+                            style: const TextStyle(fontSize: 10, color: Color(0xFF718096)),
+                          );
+                        },
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, meta) {
+                          final index = value.toInt();
+                          if (index < 0 || index >= _attendanceSummary.length) {
+                            return const SizedBox.shrink();
+                          }
+                          final course = _attendanceSummary[index].courseName;
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              course,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Color(0xFF4A5568),
+                              ),
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  barGroups: barGroups,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

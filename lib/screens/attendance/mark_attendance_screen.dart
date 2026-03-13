@@ -48,11 +48,6 @@ class _MarkAttendanceScreenState extends State<MarkAttendanceScreen> {
     setState(() => _isLoading = true);
     try {
       var students = await _dbService.getStudentsByCourse(widget.courseId);
-      
-      // If no students enrolled, create demo students
-      if (students.isEmpty) {
-        students = _createDemoStudents();
-      }
 
       setState(() {
         _students = students;
@@ -65,71 +60,6 @@ class _MarkAttendanceScreenState extends State<MarkAttendanceScreen> {
       setState(() => _isLoading = false);
       _showSnackBar('Error loading students', Colors.red);
     }
-  }
-
-  List<StudentProfile> _createDemoStudents() {
-    return [
-      StudentProfile(
-        studentId: 'demo_1',
-        userId: 'user_1',
-        fullName: 'John Smith',
-        email: 'john@uni.com',
-        rollNumber: 'CS2021001',
-        departmentId: 'dept_cs',
-        departmentName: 'Computer Science',
-        currentSemester: 3,
-        enrolledCourseIds: [widget.courseId],
-        enrollmentDate: DateTime.now(),
-      ),
-      StudentProfile(
-        studentId: 'demo_2',
-        userId: 'user_2',
-        fullName: 'Jane Doe',
-        email: 'jane@uni.com',
-        rollNumber: 'CS2021002',
-        departmentId: 'dept_cs',
-        departmentName: 'Computer Science',
-        currentSemester: 3,
-        enrolledCourseIds: [widget.courseId],
-        enrollmentDate: DateTime.now(),
-      ),
-      StudentProfile(
-        studentId: 'demo_3',
-        userId: 'user_3',
-        fullName: 'Mike Johnson',
-        email: 'mike@uni.com',
-        rollNumber: 'CS2021003',
-        departmentId: 'dept_cs',
-        departmentName: 'Computer Science',
-        currentSemester: 3,
-        enrolledCourseIds: [widget.courseId],
-        enrollmentDate: DateTime.now(),
-      ),
-      StudentProfile(
-        studentId: 'demo_4',
-        userId: 'user_4',
-        fullName: 'Sarah Williams',
-        email: 'sarah@uni.com',
-        rollNumber: 'CS2021004',
-        departmentId: 'dept_cs',
-        departmentName: 'Computer Science',
-        currentSemester: 3,
-        enrolledCourseIds: [widget.courseId],
-        enrollmentDate: DateTime.now(),
-      ),
-      StudentProfile(
-        studentId: 'demo_5',
-        userId: 'user_5',
-        fullName: 'David Brown',
-        email: 'david@uni.com',
-        rollNumber: 'CS2021005',
-        departmentId: 'dept_cs',
-        departmentName: 'Computer Science',
-        currentSemester: 3,
-        enrolledCourseIds: [widget.courseId],
-        enrollmentDate: DateTime.now(),
-      ),
-    ];
   }
 
   void _showSnackBar(String message, Color color) {

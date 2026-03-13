@@ -162,12 +162,16 @@ class DatabaseService {
       final snapshot = await _firestore
           .collection('attendance')
           .where('staffId', isEqualTo: staffId)
-          .orderBy('date', descending: true)
           .get();
 
-      return snapshot.docs
+      final records = snapshot.docs
           .map((doc) => AttendanceModel.fromJson(doc.data()))
           .toList();
+
+      // Sort in memory by date (newest first) to avoid
+      // requiring a composite Firestore index.
+      records.sort((a, b) => b.date.compareTo(a.date));
+      return records;
     } catch (e) {
       print('Error fetching staff attendance: $e');
       return [];
@@ -304,18 +308,58 @@ class DatabaseService {
     }
   }
 
-  /// READ: Get courses for staff
-  Future<List<CourseModel>> getCoursesForStaff(String staffId) async {
+  /// READ: Get courses for staff (supports legacy data)
+  Future<List<CourseModel>> getCoursesForStaff(
+    String staffId, {
+    String? staffName,
+    List<String>? assignedCourseIds,
+  }) async {
     try {
-      final snapshot = await _firestore
-          .collection('courses')
-          .where('isActive', isEqualTo: true)
-          .where('staffId', isEqualTo: staffId)
-          .get();
+      final Set<String> seenCourseIds = {};
+      final List<CourseModel> courses = [];
 
-      return snapshot.docs
-          .map((doc) => CourseModel.fromJson(doc.data()))
-          .toList();
+      Future<void> _addCoursesFromDocs(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
+        for (final doc in docs) {
+          final course = CourseModel.fromJson(doc.data());
+          if (course.isActive && seenCourseIds.add(course.courseId)) {
+            courses.add(course);
+          }
+        }
+      }
+
+      final trimmedStaffId = staffId.trim();
+      if (trimmedStaffId.isNotEmpty) {
+        final snapshot = await _firestore
+            .collection('courses')
+            .where('isActive', isEqualTo: true)
+            .where('staffId', isEqualTo: trimmedStaffId)
+            .get();
+        await _addCoursesFromDocs(snapshot.docs);
+      }
+
+      if (courses.isEmpty && staffName != null && staffName.trim().isNotEmpty) {
+        final snapshot = await _firestore
+            .collection('courses')
+            .where('isActive', isEqualTo: true)
+            .where('staffName', isEqualTo: staffName.trim())
+            .get();
+        await _addCoursesFromDocs(snapshot.docs);
+      }
+
+      if ((assignedCourseIds ?? []).isNotEmpty) {
+        for (final courseId in assignedCourseIds!) {
+          if (courseId.isEmpty || seenCourseIds.contains(courseId)) continue;
+          final doc = await _firestore.collection('courses').doc(courseId).get();
+          if (doc.exists) {
+            final course = CourseModel.fromJson(doc.data()!);
+            if (course.isActive && seenCourseIds.add(course.courseId)) {
+              courses.add(course);
+            }
+          }
+        }
+      }
+
+      return courses;
     } catch (e) {
       print('Error fetching staff courses: $e');
       return [];
@@ -586,15 +630,96 @@ class DatabaseService {
   /// READ: Get students by course
   Future<List<StudentProfile>> getStudentsByCourse(String courseId) async {
     try {
+      // First, try to fetch students explicitly enrolled in this course
       final snapshot = await _firestore
           .collection('students')
           .where('isActive', isEqualTo: true)
           .where('enrolledCourseIds', arrayContains: courseId)
           .get();
 
-      return snapshot.docs
+      var students = snapshot.docs
           .map((doc) => StudentProfile.fromJson(doc.data()))
           .toList();
+
+      if (students.isNotEmpty) {
+        return students;
+      }
+
+      // Fallback: use course's department + semester to find students
+      final courseDoc = await _firestore
+          .collection('courses')
+          .doc(courseId)
+          .get();
+
+      if (!courseDoc.exists) {
+        print('Course not found for courseId: $courseId');
+        return [];
+      }
+
+      final course = CourseModel.fromJson(courseDoc.data()!);
+      // Support both new short ids (it, cs, ...) and older dept_* ids.
+      final departmentIdsToTry = <String>{course.departmentId};
+      if (course.departmentId.startsWith('dept_')) {
+        departmentIdsToTry.add(course.departmentId.substring(5));
+      } else {
+        departmentIdsToTry.add('dept_${course.departmentId}');
+      }
+
+      // Try primary departmentId first
+      Future<List<StudentProfile>> _queryByDept(String deptId) async {
+        final snap = await _firestore
+            .collection('students')
+            .where('isActive', isEqualTo: true)
+            .where('departmentId', isEqualTo: deptId)
+            .where('currentSemester', isEqualTo: course.semester)
+            .get();
+
+        return snap.docs
+            .map((doc) => StudentProfile.fromJson(doc.data()))
+            .toList();
+      }
+
+      // First attempt with exact course.departmentId
+      students = await _queryByDept(course.departmentId);
+
+      // If none found, try alternative form (e.g. dept_it or it)
+      if (students.isEmpty) {
+        for (final alt in departmentIdsToTry) {
+          if (alt == course.departmentId) continue;
+          final altStudents = await _queryByDept(alt);
+          if (altStudents.isNotEmpty) {
+            students = altStudents;
+            break;
+          }
+        }
+      }
+
+      // Final fallback: derive semester from email/roll for all active
+      // students in matching departments. This ensures that even if
+      // currentSemester wasn't stored correctly earlier, students with
+      // emails like 23it009@... or D24it001@... are still matched to
+      // the right semester.
+      if (students.isEmpty) {
+        final allSnap = await _firestore
+            .collection('students')
+            .where('isActive', isEqualTo: true)
+            .get();
+
+        final allStudents = allSnap.docs
+            .map((doc) => StudentProfile.fromJson(doc.data()))
+            .toList();
+
+        students = allStudents.where((s) {
+          final deptMatches = departmentIdsToTry.contains(s.departmentId);
+          if (!deptMatches) return false;
+
+          final semFromEmail = _inferSemesterFromEmail(s.email);
+          return semFromEmail == course.semester;
+        }).toList();
+      }
+
+      print('Fetched ${students.length} students for course $courseId using department ${course.departmentId} and semester ${course.semester}');
+      return students;
     } catch (e) {
       print('Error fetching students by course: $e');
       return [];
@@ -1025,6 +1150,97 @@ class DatabaseService {
       default:
         return 'Unknown';
     }
+  }
+
+  /// CREATE STUDENT PROFILES FOR EXISTING STUDENT USERS (Migration Helper)
+  Future<void> createStudentProfilesForExistingStudents() async {
+    try {
+      print('Starting migration of existing student users to student profiles...');
+
+      // Get all users with student role
+      final usersSnapshot = await _firestore
+          .collection('users')
+          .where('role', isEqualTo: 'student')
+          .get();
+
+      print('Found ${usersSnapshot.docs.length} student users');
+
+      for (var userDoc in usersSnapshot.docs) {
+        final userData = userDoc.data();
+        // Use stored id when available, otherwise fall back to document id
+        final dynamic idField = userData['id'];
+        final String userId = (idField is String && idField.isNotEmpty)
+            ? idField
+            : userDoc.id;
+        final fullName = (userData['fullName'] ?? 'Student').toString();
+        final email = (userData['email'] ?? '').toString().toLowerCase();
+        final department = (userData['department'] ?? 'unknown').toString();
+
+        // Check if student profile already exists for this user
+        final existingProfile = await _firestore
+            .collection('students')
+            .where('userId', isEqualTo: userId)
+            .limit(1)
+            .get();
+
+        if (existingProfile.docs.isEmpty) {
+          final localPart = email.split('@').first.toUpperCase();
+
+          await _firestore.collection('students').doc(userId).set({
+            'studentId': userId,
+            'userId': userId,
+            'fullName': fullName,
+            'email': email,
+            'rollNumber': localPart,
+            'departmentId': department,
+            'departmentName': _getDepartmentDisplayName(department),
+            'currentSemester': _inferSemesterFromEmail(email),
+            'enrolledCourseIds': <String>[],
+            'enrollmentDate': DateTime.now().toIso8601String(),
+            'isActive': true,
+          });
+
+          print('Created student profile for: $fullName ($userId)');
+        }
+      }
+
+      print('Student migration complete!');
+    } catch (e) {
+      print('Error creating student profiles: $e');
+    }
+  }
+
+  /// Infer current semester from university batch rules using email pattern.
+  /// This mirrors the logic used on the student side so that existing
+  /// accounts with emails like 23it001@... or D24it001@... get the
+  /// correct currentSemester value during migration.
+  int _inferSemesterFromEmail(String email) {
+    final localPart = email.split('@').first.trim().toUpperCase();
+
+    int? computedSem;
+
+    if (localPart.isNotEmpty) {
+      final regex = RegExp(r'^(D?)(\d{2})');
+      final match = regex.firstMatch(localPart);
+
+      if (match != null) {
+        final isDiploma = match.group(1) == 'D';
+        final yearSuffixStr = match.group(2);
+        final yearSuffix = int.tryParse(yearSuffixStr ?? '');
+
+        if (yearSuffix != null) {
+          final baseYear = isDiploma ? (yearSuffix - 1) : yearSuffix;
+          final now = DateTime.now();
+          final currentYearSuffix = now.year % 100;
+          final rawSem = 2 * (currentYearSuffix - baseYear);
+          if (rawSem > 0) {
+            computedSem = rawSem.clamp(1, 8).toInt();
+          }
+        }
+      }
+    }
+
+    return computedSem ?? 1;
   }
 }
 

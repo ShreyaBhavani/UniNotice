@@ -149,7 +149,11 @@ class _AdminTimetableScreenState extends State<AdminTimetableScreen>
     }
 
     try {
-      final courses = await _dbService.getCoursesForStaff(_selectedStaff!.staffId);
+      final courses = await _dbService.getCoursesForStaff(
+        _selectedStaff!.staffId,
+        staffName: _selectedStaff!.fullName,
+        assignedCourseIds: _selectedStaff!.assignedCourseIds,
+      );
 
       if (!mounted) return;
 
